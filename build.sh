@@ -1,4 +1,5 @@
 
+source /opt/ros/humble/setup.bash
 
 if [[ ! -f "src/harpia_msgs/install/setup.bash" ]]; then
   unset COMPILE_SCRIPT_JUMP_HARPIA_MSGS_COMPILATION_IF_ALREADY_IS
