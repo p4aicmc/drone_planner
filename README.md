@@ -21,8 +21,7 @@ Harpia 2 is the ROS 2 version of the Harpia system for UAV mission and path plan
 - ROS 2 → Humble
 - QGroundControl →
 - Mavros
-- Plansys2 - https://github.com/PlanSys2/ros2_planning_system/tree/8431e320818cd12d21792327ad215edcbe2cc26d
-
+  
 ### Instalation
 
 #### ROS 2 Humble
@@ -65,28 +64,24 @@ Harpia 2 is the ROS 2 version of the Harpia system for UAV mission and path plan
 - sudo apt install ros-humble-mavros
 - ros2 run mavros install_geographiclib_datasets.sh
 
-#### Plansys2
-- git clone https://github.com/PlanSys2/ros2_planning_system.git
-- cd ros2_planning_system/
-- git checkout 8431e320818cd12d21792327ad215edcbe2cc26d
-- rosdep install -y -r -q --from-paths src --ignore-src --rosdistro humble
-- colcon build --symlink-install
-
 ### Build
 
 - (Recommended) Use the bash scripts "compile.sh", "compile_and_run.sh" and "run.sh"
-- cd src/harpia_msgs (in the project root directory)
-- colcon build
-- source install/setup.bash
-- cd ../.. (return to the project root directory)
-- colcon build
-- source install/setup.bash
-- Launch the system with ros2 launch launch/launch_file.py
+- Manual compiling:
+-- cd src/harpia_msgs (in the project root directory)
+-- source /opt/ros/humble/setup.bash
+-- colcon build
+-- source install/setup.bash
+-- cd ../.. (return to the project root directory)
+-- colcon build
+-- source install/setup.bash
+-- Launch the system with ros2 launch launch/launch_file.py
 
 ### Troubleshooting
 
 - Common issues when installing or running the system comes from:
 - Not sourcing ROS 2, harpia_msgs or the harpia system itself (remember to use source /opt/ros/humble/setup.bash and any other setup.bash files needed in every new terminal session)
+- To avoid problems sourcing ROS 2 its recommended to add the source /opt/ros/humble/setup.bash to your .bashrc file
 
 ## Simulation Video
 
@@ -95,10 +90,3 @@ Harpia 2 is the ROS 2 version of the Harpia system for UAV mission and path plan
 ## Articles 
 - [Service-Oriented Architecture to Integrate Flight Safety and Mission Management Subsystems into UAVs, ICAS, BeloHorizonte, 2018](https://www.icas.org/ICAS_ARCHIVE/ICAS2018/data/papers/ICAS2018_0374_paper.pdf)
 - [Harpia: A Hybrid System for Agricultural UAV Missions](https://authors.elsevier.com/tracking/article/details.do?surname=Vannini&aid=100191&jid=ATECH)
-
-## Implementation Schedule 
-
-## References
-
-### PlanSys2
-
