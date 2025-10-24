@@ -1,13 +1,13 @@
-/log/
-/build/
-/install/
+*/log/
+*/build/
+*/install/
 /.vscode
 /.venv
 /venv
 
-src/harpia_msgs/build
-src/harpia_msgs/install
-src/harpia_msgs/log
+*/src/harpia_msgs/build
+*/src/harpia_msgs/install
+*/src/harpia_msgs/log
 
 **/__pycache__/
 **/*.pyc
