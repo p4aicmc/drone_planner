@@ -27,12 +27,13 @@ RUN cd /home && \
 RUN cd /home/PX4-Autopilot && \
     DONT_RUN=1 make px4_sitl gazebo-classic
 
-# Copy project files
-COPY . /home/mavros_navigator
-
 # install dependencies
 RUN python3 -m pip install --upgrade pip setuptools wheel
+COPY requirements.txt /home/mavros_navigator/
 RUN python3 -m pip install --no-cache-dir -r /home/mavros_navigator/requirements.txt
+
+# Copy project files
+COPY source_code/ /home/mavros_navigator
 
 RUN cd /home/mavros_navigator/src/harpia_msgs && \
     rm -rf build install log && \
@@ -51,7 +52,7 @@ RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
     source install/setup.bash"
 
 # # Copy and setup entrypoint
-# COPY entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 # RUN chmod +x /entrypoint.sh
 
 # RUN rm -f /home/mavros_navigator/entrypoint.sh
@@ -59,4 +60,4 @@ RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
 
 
 
-ENTRYPOINT ["/home/mavros_navigator/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
