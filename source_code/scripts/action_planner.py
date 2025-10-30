@@ -24,8 +24,8 @@ class ActionPlanner(LifecycleNode):
         self.declare_parameter("pddl_domain", "")
         self.domain_file = self.get_parameter("pddl_domain").get_parameter_value().string_value
 
-        self.solver = "TFD"
-        # self.solver = "OPTIC"
+        # self.solver = "TFD"
+        self.solver = "OPTIC"
 
     def on_configure(self, state: State) -> TransitionCallbackReturn:
         self.get_logger().info("Configuring action_planner node...")
