@@ -171,7 +171,8 @@ class ActionPlanner(LifecycleNode):
             self.get_logger().error(f"Solver returned non-zero exit code {result.returncode}:\n{result.stderr}")
             return False
 
-        regex_pattern = r"^(\d+\.\d+):\s\(([^)]+)\)\s\[(\d+\.\d+)\]$"
+        # regex_pattern = r"^(\d+\.\d+):\s\(([^)]+)\)\s\[(\d+\.\d+)\]$"
+        regex_pattern = r"^(\d+\.\d+):\s+\(([^)]+)\)\s+\[(\d+\.\d+)\]$" # works for optic
         plan = []
 
         for line in result.stdout.splitlines():
