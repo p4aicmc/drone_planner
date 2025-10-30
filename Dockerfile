@@ -62,6 +62,6 @@ COPY entrypoint.sh /entrypoint.sh
 # RUN rm -f /home/mavros_navigator/entrypoint.sh
 # RUN echo "#!/bin/bash\nls\nsleep 5" > /home/mavros_navigator/entrypoint.sh && chmod +x /home/mavros_navigator/entrypoint.sh
 
-
+RUN apt-get update && apt-get install -y coinor-libcbc3
 
 ENTRYPOINT ["/entrypoint.sh"]
