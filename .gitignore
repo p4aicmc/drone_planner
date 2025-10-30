@@ -13,5 +13,5 @@
 **/*.pyc
 **/*.pyo
 
-/output/
-/test/
+source_code/output/
+source_code/test/
