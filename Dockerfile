@@ -49,7 +49,11 @@ RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
     source install/setup.bash && \
     cd /home/mavros_navigator/ && \
     colcon build && \
-    source install/setup.bash"
+    source install/setup.bash && \
+    chmod +x install/route_executor2/share/route_executor2/solver/OPTIC/generate_plan.sh install/route_executor2/share/route_executor2/solver/OPTIC/optic-clp && \
+    chmod +x install/route_executor2/share/route_executor2/solver/TFD/generate_plan.sh install/route_executor2/share/route_executor2/solver/TFD/downward/preprocess/preprocess install/route_executor2/share/route_executor2/solver/TFD/downward/search/search"
+
+COPY container_scripts/ /home/scripts
 
 # # Copy and setup entrypoint
 COPY entrypoint.sh /entrypoint.sh
