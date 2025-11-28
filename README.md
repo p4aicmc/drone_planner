@@ -22,6 +22,11 @@ Harpia 2 is the ROS 2 version of the Harpia system for UAV mission and path plan
 - QGroundControl →
 - Mavros
   
+### Container build
+
+- docker build -t harpia2 .
+- docker run -it --rm --name harpia2_container --network host harpia
+
 ### Instalation
 
 #### ROS 2 Humble
