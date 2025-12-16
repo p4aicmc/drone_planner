@@ -2,8 +2,9 @@
 */build/
 */install/
 /.vscode
-/.venv
+**/.venv
 /venv
+
 
 */src/harpia_msgs/build
 */src/harpia_msgs/install
