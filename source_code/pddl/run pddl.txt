@@ -1,1 +1,0 @@
-ros2 run popf popf ~/rafael/route_executor2/pddl/harpia_domain.pddl ~/rafael/route_executor2/pddl/harpia_problemsimple3.pddl 

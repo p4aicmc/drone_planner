@@ -1,9 +1,7 @@
 import json
 import os
 import sys
-from shapely.geometry import Polygon
-
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QSettings
 
 from kml_parser import parse_kml_file
