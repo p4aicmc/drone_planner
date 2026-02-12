@@ -46,7 +46,8 @@ install(PROGRAMS
   scripts/mission_controller.py
   scripts/action_planner.py
   scripts/go_to.py
-  scripts/take_image.py
+  scripts/survey.py
+  scripts/survey_path_gen.py
   scripts/recharge_battery.py
   DESTINATION lib/${PROJECT_NAME})
 
