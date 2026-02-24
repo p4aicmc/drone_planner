@@ -15,6 +15,8 @@ from shapely.geometry import Point, Polygon
 from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
 from std_msgs.msg import String
 
+from harpia_msgs.srv import StrInOut
+
 class DataServer(LifecycleNode):
 
     def __init__(self):
@@ -36,6 +38,7 @@ class DataServer(LifecycleNode):
         self.files_cb = ReentrantCallbackGroup()
         self.position_cb = MutuallyExclusiveCallbackGroup()
         self.gps_cb = MutuallyExclusiveCallbackGroup()
+        self.update_map_cb = MutuallyExclusiveCallbackGroup()
         # Define QoS profile for the position subscription
         self.qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -77,6 +80,8 @@ class DataServer(LifecycleNode):
         self.gps_subscriber = self.create_subscription(
             NavSatFix, '/mavros/global_position/global', self.gps_callback, self.sensor_qos, callback_group=self.gps_cb
         )
+
+        self.update_map_server = self.create_service(StrInOut, 'data_server/update_map', self.update_map_callback, callback_group=self.update_map_cb)
 
         self.current_position = None
         self.drone_latitude = None
@@ -140,6 +145,17 @@ class DataServer(LifecycleNode):
             ])
         self.test_timer = self.create_timer(85-5, test_update_callback)
     
+    def update_map_callback(self, request, response):
+        try:
+            self.map = json.loads(request.message)
+            response.success = True
+            response.message = "Map updated successfully"
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f"Invalid JSON in request: {e}")
+            response.success = False
+            response.message = "Invalid JSON in request"
+        return response
+
     def gps_pos_service_callback(self, request, response):
         inside_regions = self.compute_region()
 
