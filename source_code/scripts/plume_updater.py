@@ -24,7 +24,7 @@ class PlumeUpdater(Node):
             "plume_direction": [0.0, 0.0],    # (x, y) direction vector of the plume
         }
 
-        self.startup_delay = 60.0             # wait 1 minute before publishing
+        self.startup_delay = 90.0             # wait 1 minute before publishing
 
         # One-shot timer to wait before starting to publish
         self.startup_timer = self.create_timer(self.startup_delay, self.start_publishing)
