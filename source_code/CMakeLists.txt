@@ -49,6 +49,7 @@ install(PROGRAMS
   scripts/survey.py
   scripts/survey_path_gen.py
   scripts/recharge_battery.py
+  scripts/plume_updater.py
   DESTINATION lib/${PROJECT_NAME})
 
 
