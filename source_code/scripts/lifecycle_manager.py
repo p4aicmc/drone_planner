@@ -207,21 +207,21 @@ nodes = [
         'depends_on': []
     },
     {
-        'node_name': 'new_go_to',
+        'node_name': 'go_to',
         'depends_on': []
     },
     {
-        'node_name': 'new_take_image',
+        'node_name': 'survey',
         'depends_on': []
     },
     {
-        'node_name': 'new_recharge_battery',
+        'node_name': 'recharge_battery',
         'depends_on': []
     },
-    # {
-    #     'node_name': 'just_a_test',
-    #     'depends_on': ['action_planner']
-    # },
+    {
+        'node_name': 'survey_path_gen',
+        'depends_on': ['data_server']
+    },
 ]
 
 def main(args=None):

@@ -99,21 +99,28 @@ def generate_launch_description():
         Node(
             package='route_executor2',
             executable='go_to.py',
-            name='new_go_to',
+            name='go_to',
             output='screen',
             parameters=[]
         ),
         Node(
             package='route_executor2',
-            executable='take_image.py',
-            name='new_take_image',
+            executable='survey.py',
+            name='survey',
             output='screen',
             parameters=[]
         ),
         Node(
             package='route_executor2',
             executable='recharge_battery.py',
-            name='new_recharge_battery',
+            name='recharge_battery',
+            output='screen',
+            parameters=[]
+        ),
+        Node(
+            package='route_executor2',
+            executable='survey_path_gen.py',
+            name='survey_path_gen',
             output='screen',
             parameters=[]
         ),

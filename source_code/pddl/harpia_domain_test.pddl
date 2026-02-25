@@ -49,7 +49,7 @@
         )
     )
     
-    (:durative-action take_image
+    (:durative-action survey
         :parameters (
             ?region - region
         )
