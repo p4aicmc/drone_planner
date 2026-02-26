@@ -120,8 +120,8 @@ class ActionNodeExample(ActionExecutorBase):
 
         self.req = GenerateSurveyPath.Request()
         self.req.focus = [50.0, 50.0]
-        self.req.plume_lenth = 40.0
-        self.req.plume_angle = 60.0
+        self.req.plume_lenth = 50.0
+        self.req.plume_angle = 45.0
         self.req.plume_direction = [1.0, 1.0]
 
         self.get_logger().info(f"Sending request to survey path gen with parameters: {str(self.req)}") # NOT_ESSENTIAL_PRINT
