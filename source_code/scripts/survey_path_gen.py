@@ -94,9 +94,9 @@ class SurveyPathGen(LifecycleNode):
 
         waypoints = []
 
-        direction  = v2(1, 1)
-        length = 50
-        angle = 45
+        direction  = v2(plume_direction[0], plume_direction[1])
+        length = plume_lenth
+        angle = plume_angle
         step = 5
 
         direction = direction / direction.length()
