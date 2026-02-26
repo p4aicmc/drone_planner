@@ -124,6 +124,13 @@ def generate_launch_description():
             output='screen',
             parameters=[]
         ),
+        Node(
+            package='route_executor2',
+            executable='plume_updater.py',
+            name='plume_updater',
+            output='screen',
+            parameters=[]
+        ),
     ]
 
     # Create the launch description and populate
