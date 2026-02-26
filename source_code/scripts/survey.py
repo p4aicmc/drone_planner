@@ -119,7 +119,7 @@ class ActionNodeExample(ActionExecutorBase):
             return
 
         self.req = GenerateSurveyPath.Request()
-        self.req.focus = [-100.0, -100.0]
+        self.req.focus = [-200.0, 150.0]
         self.req.plume_lenth = 100.0
         self.req.plume_angle = 20.0
         self.req.plume_direction = [10.0, 10.0]
