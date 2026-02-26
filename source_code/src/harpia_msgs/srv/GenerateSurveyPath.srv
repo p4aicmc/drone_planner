@@ -1,0 +1,9 @@
+# Request
+float64[2] focus
+float64 plume_lenth
+float64 plume_angle
+float64[2] plume_direction
+
+---
+# Response
+geometry_msgs/PoseStamped[] waypoints

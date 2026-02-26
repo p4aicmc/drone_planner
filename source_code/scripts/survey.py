@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys, rclpy
+import os, sys, rclpy, json
 from ament_index_python.packages import get_package_share_directory
 from rclpy.executors import MultiThreadedExecutor
 package_share_path = get_package_share_directory("route_executor2")
@@ -13,11 +13,12 @@ from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn, LifecycleSt
 
 import rclpy
 from rclpy.parameter import Parameter, ParameterType
-from harpia_msgs.srv import GeneratePath
+from harpia_msgs.srv import GenerateSurveyPath
 from geometry_msgs.msg import PoseStamped
 from harpia_msgs.action import MoveTo
 from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from std_srvs.srv import Trigger
 
 
 class ActionNodeExample(ActionExecutorBase):
@@ -30,15 +31,15 @@ class ActionNodeExample(ActionExecutorBase):
         self.is_action_running = False
         self.waypoints = []  # Initialize waypoints as an empty list
         self.current_waypoint_index = 0  # Initialize the index
-        self.path_planner_group = MutuallyExclusiveCallbackGroup()
+        self.survey_path_gen_group = MutuallyExclusiveCallbackGroup()
         self.action_client_group = MutuallyExclusiveCallbackGroup()
-        self.cli = self.create_client(
-            GeneratePath, 
+        self.cli_survey_path_gen = self.create_client(
+            GenerateSurveyPath, 
             'survey_path_gen/generate_path', 
-            callback_group=self.path_planner_group
+            callback_group=self.survey_path_gen_group
         )
-        while not self.cli.wait_for_service(timeout_sec=2.0):
-            self.get_logger().info('path planner service not available, waiting again...')
+        while not self.cli_survey_path_gen.wait_for_service(timeout_sec=2.0):
+            self.get_logger().info('survey path gen service not available, waiting again...')
         self.action_client = ActionClient(
             self, 
             MoveTo, 
@@ -52,9 +53,8 @@ class ActionNodeExample(ActionExecutorBase):
     
 
     def new_goal(self, goal_request) -> bool:
-        origin = goal_request.parameters[0]
-        destination = origin # goal_request.parameters[1]
-        self.get_logger().info(f"Origin: {origin}, Destination: {destination}")
+        region = goal_request.parameters[0]
+        self.get_logger().info(f"Region: {region}")
 
         if not self._can_receive_new_goal:
             self.get_logger().info("Cannot receive new goal, action is already running")
@@ -65,7 +65,8 @@ class ActionNodeExample(ActionExecutorBase):
         pass # self.get_logger().info(f"Current action arguments: {goal_request}") # NOT_ESSENTIAL_PRINT
         self._can_receive_new_goal = False
         self.is_action_running = True
-        self.send_path_planner(origin, destination)  # Now asynchronous
+
+        self.send_survey_path_gen()
 
         self.current_waypoint_index = 0
         self.waypoints = []
@@ -76,7 +77,7 @@ class ActionNodeExample(ActionExecutorBase):
 
         if not self.waypoints:
             # Skip processing if waypoints are not yet available
-            # self.get_logger().info('Waiting for waypoints from the path planner...') # NOT_ESSENTIAL_PRINT
+            # self.get_logger().info('Waiting for waypoints from the survey path gen...') # NOT_ESSENTIAL_PRINT
             return False, self.progress_
 
         self.progress_ = self.current_waypoint_index / len(self.waypoints)
@@ -101,33 +102,37 @@ class ActionNodeExample(ActionExecutorBase):
 
     ###################################################
 
-    def send_path_planner(self, origin, destination):
+    def send_survey_path_gen(self):
         """
-        Sends a request to the path planner asynchronously.
+        Sends a request to the survey path gen asynchronously.
 
         Parameters
         ----------
         origin : str
             The starting point of the path.
-        destination : str
-            The destination point of the path.
         """
+
+        self.get_logger().info("Sending request to survey path gen...") # NOT_ESSENTIAL_PRINT
 
         if not self.is_action_running:
-            self.get_logger().info('Mission stoped, dont call path_planner') # NOT_ESSENTIAL_PRINT
+            self.get_logger().info('Mission stoped, dont call survey_path_get') # NOT_ESSENTIAL_PRINT
             return
 
-        self.req = GeneratePath.Request()
-        self.req.origin = origin
-        self.req.destination = destination
+        self.req = GenerateSurveyPath.Request()
+        self.req.focus = [-100.0, -100.0]
+        self.req.plume_lenth = 100.0
+        self.req.plume_angle = 20.0
+        self.req.plume_direction = [10.0, 10.0]
+
+        self.get_logger().info(f"Sending request to survey path gen with parameters: {str(self.req)}") # NOT_ESSENTIAL_PRINT
 
         # Send the request asynchronously
-        self.future = self.cli.call_async(self.req)
-        self.future.add_done_callback(self.path_planner_response_callback)
+        self.future = self.cli_survey_path_gen.call_async(self.req)
+        self.future.add_done_callback(self.survey_path_gen_response_callback)
 
-    def path_planner_response_callback(self, future):
+    def survey_path_gen_response_callback(self, future):
         """
-        Handles the response from the path planner service.
+        Handles the response from the survey path gen service.
 
         Parameters
         ----------
@@ -237,34 +242,34 @@ class ActionNodeExample(ActionExecutorBase):
             self.get_logger().error('Failed to reach waypoint')
 
 
-    # Path planner
-    def send_path_planner(self, origin, destination):
+    # # survey path gen
+    # def send_survey_path_gen(self, origin, destination):
+    #     """
+    #     Sends a request to the survey path gen asynchronously.
+
+    #     Parameters
+    #     ----------
+    #     origin : str
+    #         The starting point of the path.
+    #     destination : str
+    #         The destination point of the path.
+    #     """
+
+    #     if not self.is_action_running:
+    #         self.get_logger().info('Mission stoped, dont call survey_path_get') # NOT_ESSENTIAL_PRINT
+    #         return
+
+    #     req = GeneratePath.Request()
+    #     req.origin = origin
+    #     req.destination = destination
+
+    #     # Send the request asynchronously
+    #     future = self.cli_survey_path_gen.call_async(req)
+    #     future.add_done_callback(self.survey_path_gen_response_callback)
+
+    def survey_path_gen_response_callback(self, future):
         """
-        Sends a request to the path planner asynchronously.
-
-        Parameters
-        ----------
-        origin : str
-            The starting point of the path.
-        destination : str
-            The destination point of the path.
-        """
-
-        if not self.is_action_running:
-            self.get_logger().info('Mission stoped, dont call path_planner') # NOT_ESSENTIAL_PRINT
-            return
-
-        req = GeneratePath.Request()
-        req.origin = origin
-        req.destination = destination
-
-        # Send the request asynchronously
-        future = self.cli.call_async(req)
-        future.add_done_callback(self.path_planner_response_callback)
-
-    def path_planner_response_callback(self, future):
-        """
-        Handles the response from the path planner service.
+        Handles the response from the survey path gen service.
 
         Parameters
         ----------
@@ -276,7 +281,7 @@ class ActionNodeExample(ActionExecutorBase):
             self.get_logger().info('response number of waypoints: ' + str(len(response.waypoints))) # NOT_ESSENTIAL_PRINT
             # if response.success: # this dont work
             if len(response.waypoints) > 0:
-                pass # self.get_logger().info('Received waypoints from path planner:') # NOT_ESSENTIAL_PRINT
+                pass # self.get_logger().info('Received waypoints from survey path gen:') # NOT_ESSENTIAL_PRINT
                 for waypoint in response.waypoints:
                     pass # self.get_logger().info(f"x: {waypoint.pose.position.x:20.15f} y: {waypoint.pose.position.y:20.15f}") # NOT_ESSENTIAL_PRINT
 
@@ -290,6 +295,33 @@ class ActionNodeExample(ActionExecutorBase):
             self.get_logger().error(f'Service call failed: {e}')
             # self.finish(False, 0.0, 'Service call exception')
 
+    def find_location_by_name(self, name):
+        """
+        Searches for a location by name in bases, ROIs, or NFZs.
+
+        Parameters
+        ----------
+        name : str
+            Name of the location to find.
+
+        Returns
+        -------
+        tuple or None
+            Coordinates (x, y) of the location, or None if not found.
+        """
+        for base in self.map.bases:
+            if base['name'] == name:
+                return base['center']
+
+        for roi in self.map.rois:
+            if roi['name'] == name:
+                return roi['center']
+
+        for nfz in self.map.nfz:
+            if nfz['name'] == name:
+                return nfz['center']
+
+        return None
 
 def main(args=None):
     rclpy.init(args=args)
