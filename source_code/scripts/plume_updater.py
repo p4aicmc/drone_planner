@@ -19,12 +19,12 @@ class PlumeUpdater(Node):
 
         self.new_plume = {
             "focus": [0.0, 0.0],             # (x, y) origin point of the plume
-            "plume_lenth": 0.0,               # length of the plume in meters
-            "plume_angle": 0.0,               # spread angle of the plume in degrees
-            "plume_direction": [0.0, 0.0],    # (x, y) direction vector of the plume
+            "plume_lenth": 150.0,               # length of the plume in meters
+            "plume_angle": 30.0,               # spread angle of the plume in degrees
+            "plume_direction": [1.0, 1.0],    # (x, y) direction vector of the plume
         }
 
-        self.startup_delay = 90.0             # wait 1 minute before publishing
+        self.startup_delay = 50.0             # wait 1 minute before publishing
 
         # One-shot timer to wait before starting to publish
         self.startup_timer = self.create_timer(self.startup_delay, self.start_publishing)
@@ -33,6 +33,7 @@ class PlumeUpdater(Node):
     def start_publishing(self):
         self.destroy_timer(self.startup_timer)
         self.get_logger().info('Startup delay elapsed, beginning plume publishing.')
+        self.send_plume_update()  # Send the first update immediately
 
     def send_plume_update(self):
         msg = String()
