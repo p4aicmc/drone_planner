@@ -46,6 +46,7 @@ class ActionNodeExample(ActionExecutorBase):
         self._replan_in_progress = False
         self._replan_queued = False
         self._canceling_for_replan = False
+        self._replan_skip_count = 0
         self.survey_path_gen_group = MutuallyExclusiveCallbackGroup()
         self.action_client_group = MutuallyExclusiveCallbackGroup()
         self.cli_survey_path_gen = self.create_client(
@@ -196,6 +197,9 @@ class ActionNodeExample(ActionExecutorBase):
         self._replan_in_progress = True
         self._canceling_for_replan = True
         self._replan_queued = False
+        # Preserve mission progress in replans: skip as many new waypoints
+        # as were already completed in the current path.
+        self._replan_skip_count = self.current_waypoint_index
 
         if self._active_move_goal_handle is not None:
             cancel_future = self._active_move_goal_handle.cancel_goal_async()
@@ -245,10 +249,11 @@ class ActionNodeExample(ActionExecutorBase):
 
             waypoints = response.waypoints
             if reason == "replan":
-                waypoints = waypoints[16:]
+                skip_count = max(0, self._replan_skip_count)
+                waypoints = waypoints[skip_count:]
                 if len(waypoints) <= 0:
                     self.get_logger().error(
-                        'Replanned path has no waypoints after skipping the first 10.'
+                        f'Replanned path has no waypoints after skipping the first {skip_count}.'
                     )
                     self._replan_in_progress = False
                     return
