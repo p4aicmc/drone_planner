@@ -92,6 +92,15 @@ class DataServer(LifecycleNode):
 
         self.position_missing_retry = 0
 
+        # QoS profile for the latched map topic (TRANSIENT_LOCAL ensures
+        # late-joining subscribers receive the last published message)
+        self.map_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
         return TransitionCallbackReturn.SUCCESS
 
     def on_activate(self, state: State) -> TransitionCallbackReturn:
@@ -112,7 +121,10 @@ class DataServer(LifecycleNode):
                 
             return TransitionCallbackReturn.FAILURE
 
-        self.map_srv = self.create_service(Trigger, 'data_server/map', self.map_callback, callback_group=self.files_cb)
+        # Latched map topic — new subscribers automatically get the latest map
+        self.map_publisher = self.create_publisher(String, 'data_server/map', self.map_qos)
+        self.publish_map()
+
         self.mission_srv = self.create_service(Trigger, 'data_server/mission', self.mission_callback, callback_group=self.files_cb)
         self.hardware_srv = self.create_service(Trigger, 'data_server/hardware', self.hardware_callback, callback_group=self.files_cb)
         self.position_srv = self.create_service(Trigger, 'data_server/drone_position', self.position_service_callback, callback_group=self.position_cb)
@@ -124,6 +136,15 @@ class DataServer(LifecycleNode):
 
         return TransitionCallbackReturn.SUCCESS
 
+
+    ##############################################
+
+    def publish_map(self):
+        """Publish the current map on the latched topic."""
+        msg = String()
+        msg.data = json.dumps(self.map)
+        self.map_publisher.publish(msg)
+        self.get_logger().info('Published map to latched topic')
 
     ##############################################
 
@@ -150,11 +171,17 @@ class DataServer(LifecycleNode):
             self.map = json.loads(request.message)
             response.success = True
             response.message = "Map updated successfully"
+            self._on_update_map(request, response)
         except json.JSONDecodeError as e:
             self.get_logger().error(f"Invalid JSON in request: {e}")
             response.success = False
             response.message = "Invalid JSON in request"
         return response
+
+    def _on_update_map(self, request, response):
+        # Re-publish on the latched topic so all subscribers get the update
+        self.get_logger().info("Map updated – re-publishing to latched topic")
+        self.publish_map()
 
     def gps_pos_service_callback(self, request, response):
         inside_regions = self.compute_region()
@@ -196,11 +223,6 @@ class DataServer(LifecycleNode):
             The current position of the drone.
         """
         self.current_position = msg.pose.position
-
-    def map_callback(self, request, response):
-        # self.get_logger().info(f"Received request to send map")
-        response.message = json.dumps(self.map)
-        return response
 
     def mission_callback(self, request, response):
         # self.get_logger().info(f"Received request to send mission")
