@@ -10,7 +10,7 @@
       "name" : "take_picture_1",
       "id" : 1,
       "mission_execution" : [
-         {"instructions": {"area": "region_1"},"command" : "take_picture"},
+         {"instructions": {"area": "plume_1"},"command" : "survey"},
          {"instructions": {"area": "base_1"},"command" : "end"}
       ]
    },

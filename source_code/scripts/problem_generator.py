@@ -161,6 +161,11 @@ class ProblemGenerator(LifecycleNode):
             instances['region'].append(reg["name"])
             regions_list.append(reg)
 
+        for plume in self.data["map"].get("plumes", []):
+            instances['region'].append(plume["name"])
+            # Use "focus" as the center for distance calculations
+            regions_list.append({"name": plume["name"], "center": plume["focus"]})
+
         
         for region1 in regions_list:
             for region2 in regions_list:
@@ -177,11 +182,15 @@ class ProblemGenerator(LifecycleNode):
                 predicates.append(f"picture_goal {area}")
                 goals.append(f"taken_image {area}")
             
+            elif command == "survey":
+                predicates.append(f"picture_goal {area}")
+                goals.append(f"taken_image {area}")
+            
             elif command == "end":
                 goals.append(f"at {area}")
             
             else:
-                self.get_logger().error(f"Comando '{command}' desconhecido")
+                self.get_logger().error(f"Unknown command '{command}'")
 
         functions.append(f"(battery_capacity) {self.data['hardware']['battery-capacity']}")
         # functions.append(f"(= (discharge_rate_battery) {self.data['hardware']['discharge-rate-battery']})")
@@ -233,7 +242,7 @@ class ProblemGenerator(LifecycleNode):
         try:
             updates = json.loads(msg.data)
         except json.JSONDecodeError as e:
-            self.get_logger().error(f"ERROR, the mission update json in invalid")
+            self.get_logger().error(f"ERROR, the mission update json is invalid")
             return
         
         if self.last_problem is None:

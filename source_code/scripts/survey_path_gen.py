@@ -48,7 +48,36 @@ class SurveyPathGen(LifecycleNode):
         self.home_lat = None
         self.home_lon = None
 
+        home_cb = MutuallyExclusiveCallbackGroup()
+        self.home_cli = self.create_client(Trigger, 'data_server/home_position', callback_group=home_cb)
+        while not self.home_cli.wait_for_service(timeout_sec=2.0):
+            self.get_logger().info('data_server/home_position service not available, waiting again...')
+
+        home_req = Trigger.Request()
+        home_future = self.home_cli.call_async(home_req)
+        home_future.add_done_callback(self._home_response_callback)
+
         return TransitionCallbackReturn.SUCCESS
+
+    def _home_response_callback(self, future):
+        try:
+            response = future.result()
+            position = response.message.split()
+            if len(position) < 2:
+                self.get_logger().error('Invalid home position response')
+                return
+            self.home_lat = float(position[0])
+            self.home_lon = float(position[1])
+            self.get_logger().info(f'Home position: {self.home_lat}, {self.home_lon}')
+        except Exception as e:
+            self.get_logger().error(f'Failed to get home position: {e}')
+
+    @staticmethod
+    def geo_to_cart(lat, lon, home_lat, home_lon):
+        """Convert geographic (lat, lon) to local Cartesian (x, y) relative to home."""
+        y = (lat - home_lat) * 111320.0
+        x = (lon - home_lon) * (111320.0 * math.cos(home_lat * math.pi / 180))
+        return x, y
 
     def on_activate(self, state: State) -> TransitionCallbackReturn:
         pass # self.get_logger().info("Activating node...") # NOT_ESSENTIAL_PRINT
@@ -63,21 +92,31 @@ class SurveyPathGen(LifecycleNode):
         Gera um caminho em zigue zague na pluma.
         """
 
-        plume_focus = request.focus
+        if self.home_lat is None or self.home_lon is None:
+            self.get_logger().error('Home position not yet available, cannot generate path')
+            response.waypoints = []
+            return response
+
+        # Convert lat/lon focus to local Cartesian
+        focus_x, focus_y = self.geo_to_cart(
+            request.focus_lat, request.focus_lon,
+            self.home_lat, self.home_lon
+        )
+        plume_focus = [focus_x, focus_y]
         plume_lenth = request.plume_lenth
         plume_angle = request.plume_angle
         plume_direction = request.plume_direction
 
-        self.get_logger().info(f"Plume parameters received: {plume_focus}, {plume_lenth}, {plume_angle}, {plume_direction}") # NOT_ESSENTIAL_PRINT
+        self.get_logger().info(f"Plume parameters received: lat={request.focus_lat}, lon={request.focus_lon} -> cart={plume_focus}, {plume_lenth}, {plume_angle}, {plume_direction}") # NOT_ESSENTIAL_PRINT
 
         # Validar se os parametros são válidos
         if plume_focus is None:
             self.get_logger().error("Invalid plume focus")
-            response.waypoints = []  # Resposta vazia em caso de erro
+            response.waypoints = []
             return response
 
-        # Gera o caminho com a posição ATUALIZADA do drone
-        self.get_logger().info(f"Generating path from current position to goal") # NOT_ESSENTIAL_PRINT
+        # Gera o caminho
+        self.get_logger().info(f"Generating survey path") # NOT_ESSENTIAL_PRINT
         waypointsList = self.generate_path(plume_focus, plume_lenth, plume_angle, plume_direction) or []
         if not waypointsList:
             self.get_logger().error("Waypoints from the actual position are empty.")

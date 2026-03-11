@@ -74,6 +74,7 @@ class Map:
         self.bases = []
         self.rois = []
         self.nfz = []
+        self.plumes = []
 
     def read_route_from_json(self, map_file):
         """
@@ -90,6 +91,7 @@ class Map:
         self.bases = []
         self.rois = []
         self.nfz = []
+        self.plumes = []
 
         for base in data.get('bases', []):
             center = base.get('center')
@@ -147,6 +149,18 @@ class Map:
                 obstacle.append(vector)  # Adiciona o Vector à lista temporária
 
             self.obstacleList.append(obstacle)  # Adiciona o obstáculo completo à lista principal
+
+        for plume in data.get('plumes', []):
+            focus = plume.get('focus')
+            if focus:
+                enu_x, enu_y = self.converter.geo_to_cart(
+                    (focus[1], focus[0]), (self.home_lat, self.home_lon)
+                )
+                self.plumes.append({
+                    'id': plume.get('id'),
+                    'name': plume.get('name'),
+                    'center': (enu_x, enu_y),
+                })
 
 class PathPlanner(LifecycleNode):
     """Path planning node for generating and executing paths."""
@@ -284,6 +298,10 @@ class PathPlanner(LifecycleNode):
         for nfz in self.map.nfz:
             if nfz['name'] == name:
                 return nfz['center']
+
+        for plume in self.map.plumes:
+            if plume['name'] == name:
+                return plume['center']
 
         return None
 

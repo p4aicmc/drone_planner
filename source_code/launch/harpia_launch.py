@@ -126,13 +126,6 @@ def generate_launch_description():
         ),
         Node(
             package='route_executor2',
-            executable='plume_updater.py',
-            name='plume_updater',
-            output='screen',
-            parameters=[]
-        ),
-        Node(
-            package='route_executor2',
             executable='map_updater.py',
             name='map_updater',
             output='screen',
