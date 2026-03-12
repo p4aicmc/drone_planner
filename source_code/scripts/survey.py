@@ -18,6 +18,7 @@ from geometry_msgs.msg import PoseStamped
 from harpia_msgs.action import MoveTo
 from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from std_srvs.srv import Trigger
 from std_msgs.msg import String
 
@@ -32,13 +33,8 @@ class ActionNodeExample(ActionExecutorBase):
         self.is_action_running = False
         self.waypoints = []  # Initialize waypoints as an empty list
         self.current_waypoint_index = 0  # Initialize the index
-        self.mission_waypoint_reference_index = 0  # Persisted across replans
-        self.latest_plume_parameters = {
-            "focus": [0.0, 0.0],
-            "plume_lenth": 150.0,
-            "plume_angle": 30.0,
-            "plume_direction": [1.0, 0.0],
-        }
+        self.plumes = {}  # plume_name -> plume params dict, loaded from map
+        self.target_plume_name = None  # name of the plume being surveyed
         self._active_move_goal_handle = None
         self._active_move_goal_token = 0
         self._next_move_goal_token = 1
@@ -55,12 +51,21 @@ class ActionNodeExample(ActionExecutorBase):
             'survey_path_gen/generate_path', 
             callback_group=self.survey_path_gen_group
         )
-        self.plume_update_sub = self.create_subscription(
-            String,
-            'plume_update',
-            self.plume_update_callback,
-            10
+
+        # Subscribe to the latched map topic to get plume definitions
+        map_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1
         )
+        self.map_sub = self.create_subscription(
+            String,
+            'data_server/map',
+            self.map_update_callback,
+            map_qos
+        )
+
         while not self.cli_survey_path_gen.wait_for_service(timeout_sec=2.0):
             self.get_logger().info('survey path gen service not available, waiting again...')
         self.action_client = ActionClient(
@@ -76,8 +81,8 @@ class ActionNodeExample(ActionExecutorBase):
     
 
     def new_goal(self, goal_request) -> bool:
-        region = goal_request.parameters[0]
-        self.get_logger().info(f"Region: {region}")
+        plume_name = goal_request.parameters[0]
+        self.get_logger().info(f"Plume: {plume_name}")
 
         if not self._can_receive_new_goal:
             self.get_logger().info("Cannot receive new goal, action is already running")
@@ -85,11 +90,17 @@ class ActionNodeExample(ActionExecutorBase):
         
         self.get_logger().info(f"New goal received {goal_request.parameters}")
         self.progress_ = 0.0
-        pass # self.get_logger().info(f"Current action arguments: {goal_request}") # NOT_ESSENTIAL_PRINT
         self._can_receive_new_goal = False
         self.is_action_running = True
         self.mission_waypoint_reference_index = 0
 
+        if plume_name not in self.plumes:
+            self.get_logger().error(f"Plume '{plume_name}' not found in map, cannot start survey")
+            self._can_receive_new_goal = True
+            self.is_action_running = False
+            return False
+
+        self.target_plume_name = plume_name
         self.send_survey_path_gen()
 
         self.current_waypoint_index = 0
@@ -147,11 +158,17 @@ class ActionNodeExample(ActionExecutorBase):
             self.get_logger().info('Mission stoped, dont call survey_path_get') # NOT_ESSENTIAL_PRINT
             return
 
+        plume = self.plumes.get(self.target_plume_name)
+        if plume is None:
+            self.get_logger().error(f"Target plume '{self.target_plume_name}' not in map, cannot generate path")
+            return
+
         self.req = GenerateSurveyPath.Request()
-        self.req.focus = self.latest_plume_parameters["focus"]
-        self.req.plume_lenth = self.latest_plume_parameters["plume_lenth"]
-        self.req.plume_angle = self.latest_plume_parameters["plume_angle"]
-        self.req.plume_direction = self.latest_plume_parameters["plume_direction"]
+        self.req.focus_lat = plume["focus_lat"]
+        self.req.focus_lon = plume["focus_lon"]
+        self.req.plume_lenth = plume["plume_lenth"]
+        self.req.plume_angle = plume["plume_angle"]
+        self.req.plume_direction = plume["plume_direction"]
 
         self.get_logger().info(f"Sending request to survey path gen with parameters: {str(self.req)}") # NOT_ESSENTIAL_PRINT
 
@@ -165,30 +182,50 @@ class ActionNodeExample(ActionExecutorBase):
             self.survey_path_gen_response_callback(future, request_seq, reason)
         )
 
-    def plume_update_callback(self, msg: String):
+    @staticmethod
+    def _plume_to_params(plume):
+        """Convert a plume dict from the map into the flat param dict used internally."""
+        focus = plume["focus"]  # [lon, lat, alt] — same convention as map.json
+        return {
+            "focus_lat": focus[1],
+            "focus_lon": focus[0],
+            "plume_lenth": plume["plume_length"],
+            "plume_angle": plume["plume_angle"],
+            "plume_direction": plume["plume_direction"],
+        }
+
+    def map_update_callback(self, msg: String):
         """
-        Receives plume updates from plume_updater and stores the latest values.
+        Receives map updates from the data_server latched topic and extracts plume parameters.
         """
         try:
-            plume_parameters = json.loads(msg.data)
-            self.latest_plume_parameters = {
-                "focus": plume_parameters["focus"],
-                "plume_lenth": plume_parameters["plume_lenth"],
-                "plume_angle": plume_parameters["plume_angle"],
-                "plume_direction": plume_parameters["plume_direction"],
-            }
+            map_data = json.loads(msg.data)
+            plume_list = map_data.get("plumes", [])
+
+            # Build new plumes dict keyed by name
+            old_plumes = self.plumes
+            self.plumes = {}
+            for p in plume_list:
+                name = p.get("name")
+                if name:
+                    self.plumes[name] = self._plume_to_params(p)
+
             self.get_logger().info(
-                f"Updated plume parameters from plume_update topic: {self.latest_plume_parameters}"
+                f"Plumes loaded from map: {list(self.plumes.keys())}"
             ) # NOT_ESSENTIAL_PRINT
 
-            # Replan only while the mission is running and there is a path in execution.
-            if self.is_action_running and (self._active_move_goal_handle is not None or len(self.waypoints) > 0):
-                self.get_logger().info(
-                    "Active survey path detected. Starting replanning using new plume parameters."
-                ) # NOT_ESSENTIAL_PRINT
-                self.replan_active_path()
+            # Replan if the active target plume changed during a survey
+            if self.target_plume_name and self.target_plume_name in self.plumes:
+                old_params = old_plumes.get(self.target_plume_name)
+                new_params = self.plumes[self.target_plume_name]
+                if old_params is not None and old_params != new_params:
+                    if self.is_action_running and (self._active_move_goal_handle is not None or len(self.waypoints) > 0):
+                        self.get_logger().info(
+                            f"Plume '{self.target_plume_name}' changed in map update. Starting replanning."
+                        ) # NOT_ESSENTIAL_PRINT
+                        self.replan_active_path()
         except Exception as e:
-            self.get_logger().error(f"Invalid plume_update message: {e}")
+            self.get_logger().error(f"Failed to parse map for plume data: {e}")
 
     def replan_active_path(self):
         if not self.is_action_running:

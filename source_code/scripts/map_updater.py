@@ -18,9 +18,9 @@ class MapUpdater(Node):
 
         self.client = self.create_client(StrInOut, 'data_server/update_map')
 
-        # Call the update after 60 seconds
-        self.timer = self.create_timer(60.0, self.send_update)
-        self.get_logger().info('Map updater started — will send update in 60 seconds')
+        # Call the update after 90 seconds
+        self.timer = self.create_timer(90.0, self.send_update)
+        self.get_logger().info('Map updater started — will send update in 90 seconds')
 
     def send_update(self):
         self.destroy_timer(self.timer)

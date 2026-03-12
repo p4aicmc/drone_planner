@@ -1,5 +1,6 @@
 # Request
-float64[2] focus
+float64 focus_lat
+float64 focus_lon
 float64 plume_lenth
 float64 plume_angle
 float64[2] plume_direction
