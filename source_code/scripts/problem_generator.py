@@ -6,6 +6,7 @@ import math
 import time
 
 from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from std_msgs.msg import String
 
 class ProblemGenerator(LifecycleNode):
@@ -24,7 +25,16 @@ class ProblemGenerator(LifecycleNode):
             self.current_region = None
             self.last_problem = None
 
-            self.map_cli = self.create_client(Trigger, 'data_server/map')
+            # QoS matching the latched map publisher
+            map_qos = QoSProfile(
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+            self.map_subscription = self.create_subscription(
+                String, 'data_server/map', self._map_callback, map_qos
+            )
             self.hardware_cli = self.create_client(Trigger, 'data_server/hardware')
             self.mission_cli = self.create_client(Trigger, 'data_server/mission')
             self.gps_cli = self.create_client(Trigger, 'data_server/gps_position')
@@ -67,10 +77,7 @@ class ProblemGenerator(LifecycleNode):
             self.data[attr_name] = json.loads(future.result().message)
 
 
-        # Request map data
-        map_req = Trigger.Request()
-        future = self.map_cli.call_async(map_req)
-        future.add_done_callback(lambda f: handle_response(f, "map"))
+        # Request map data is received automatically via the latched topic subscription
 
         # Request hardware status
         hardware_req = Trigger.Request()
@@ -81,6 +88,14 @@ class ProblemGenerator(LifecycleNode):
         mission_req = Trigger.Request()
         future = self.mission_cli.call_async(mission_req)
         future.add_done_callback(lambda f: handle_response(f, "mission"))
+
+    def _map_callback(self, msg):
+        """Called on initial subscription (latched) and every time the map is re-published."""
+        self.get_logger().info('Received map data from latched topic')
+        try:
+            self.data['map'] = json.loads(msg.data)
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f'Invalid JSON in map message: {e}')
     
     def get_problem_callback(self, request, response):
 

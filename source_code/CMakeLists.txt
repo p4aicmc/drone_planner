@@ -50,6 +50,7 @@ install(PROGRAMS
   scripts/survey_path_gen.py
   scripts/recharge_battery.py
   scripts/plume_updater.py
+  scripts/map_updater.py
   DESTINATION lib/${PROJECT_NAME})
 
 

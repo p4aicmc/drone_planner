@@ -10,9 +10,11 @@ from geometry_msgs.msg import PoseStamped
 from ament_index_python.packages import get_package_share_directory
 import time, os, sys
 from std_srvs.srv import Trigger
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
+from std_msgs.msg import String
 
 # Adiciona o diretório base ao sys.path
 libs_path = os.path.join(os.path.dirname(__file__), './libs')
@@ -85,6 +87,10 @@ class Map:
         
         data = json.loads(map_file)
 
+        self.bases = []
+        self.rois = []
+        self.nfz = []
+
         for base in data.get('bases', []):
             center = base.get('center')
             geo_points = base.get('geo_points', [])
@@ -155,6 +161,7 @@ class PathPlanner(LifecycleNode):
         self.home_lat = None
         self.home_lon = None
         self.map = None
+        self._pending_map_data = None
 
         # Declaring callback groups
         map_cb = MutuallyExclusiveCallbackGroup()
@@ -167,9 +174,16 @@ class PathPlanner(LifecycleNode):
         while not self.position_cli.wait_for_service(timeout_sec=2.0):
             self.get_logger().info('data_server/drone_position service not available, waiting again...')
 
-        self.map_cli = self.create_client(Trigger, 'data_server/map', callback_group=map_cb)
-        while not self.map_cli.wait_for_service(timeout_sec=2.0):
-            self.get_logger().info('data_server/map service not available, waiting again...')
+        # Subscribe to the latched map topic
+        map_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self.map_subscription = self.create_subscription(
+            String, 'data_server/map', self._map_topic_callback, map_qos
+        )
 
         self.home_req = Trigger.Request()
         self.home_future = self.home_cli.call_async(self.home_req)
@@ -206,15 +220,27 @@ class PathPlanner(LifecycleNode):
             self.map = Map(self.home_lat, self.home_lon)
             pass # self.get_logger().info(f"Drone home coordinates: {self.home_lat} {self.home_lon}") # NOT_ESSENTIAL_PRINT
 
-            self.send_map_request()
+            # If map data arrived before home coordinates, process it now
+            if self._pending_map_data is not None:
+                self.get_logger().info('Processing pending map data after home init')
+                self.map.read_route_from_json(self._pending_map_data)
+                self._pending_map_data = None
             
         except Exception as e:
             self.get_logger().error(f'Failed to process position response: {e}')
 
-    def send_map_request(self):
-        self.map_req = Trigger.Request()
-        self.map_future = self.map_cli.call_async(self.map_req)
-        self.map_future.add_done_callback(self.map_response_callback)
+    def _map_topic_callback(self, msg):
+        """Called on initial subscription (latched) and every time the map is re-published."""
+        self.get_logger().info('Received map data from latched topic')
+        try:
+            if self.map is not None:
+                self.map.read_route_from_json(msg.data)
+            else:
+                # Map object not yet created (waiting for home coordinates).
+                # Store raw data so it can be processed once home is available.
+                self._pending_map_data = msg.data
+        except Exception as e:
+            self.get_logger().error(f'Failed to process map data: {e}')
     
     def position_response_callback(self, future):
         """Callback para processar a resposta do serviço de posição"""
@@ -233,18 +259,6 @@ class PathPlanner(LifecycleNode):
         except Exception as e:
             self.get_logger().error(f'Failed to process position response: {e}')
         
-    def map_response_callback(self, future):
-        # Callback for the data_server/map service
-        try:
-            response = future.result()
-            pass # self.get_logger().info('Map response from data_server') # NOT_ESSENTIAL_PRINT
-            self.map.read_route_from_json(response.message)
-            # error that sometime happens:
-            # AttributeError: 'NoneType' object has no attribute 'read_route_from_json'
-        except Exception as e:
-            self.get_logger().error(f'Map data_server service call failed: {e}')
-            # self.finish(False, 0.0, 'Service call exception') # the finish function doesnt exist
-
     def find_location_by_name(self, name):
         """
         Searches for a location by name in bases, ROIs, or NFZs.

@@ -131,6 +131,13 @@ def generate_launch_description():
             output='screen',
             parameters=[]
         ),
+        Node(
+            package='route_executor2',
+            executable='map_updater.py',
+            name='map_updater',
+            output='screen',
+            parameters=[]
+        ),
     ]
 
     # Create the launch description and populate
