@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>triangles_qgc.kml</name>
+
+    <Style id="triangleStyle1">
+      <LineStyle><color>ff0000ff</color><width>3</width></LineStyle>
+      <PolyStyle><color>400000ff</color></PolyStyle>
+    </Style>
+    <Style id="triangleStyle2">
+      <LineStyle><color>ff00ff00</color><width>3</width></LineStyle>
+      <PolyStyle><color>4000ff00</color></PolyStyle>
+    </Style>
+    <Style id="triangleStyle3">
+      <LineStyle><color>ffff0000</color><width>3</width></LineStyle>
+      <PolyStyle><color>40ff0000</color></PolyStyle>
+    </Style>
+
+    <Placemark>
+      <name>Triangle 3 (WP 7-8-9)</name>
+      <styleUrl>#triangleStyle3</styleUrl>
+      <Polygon>
+        <tessellate>1</tessellate>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -35.016409600122,-8.367311232670,0
+              -35.016068991912,-8.366053597025,0
+              -35.016762372910,-8.366008681466,0
+              -35.016409600122,-8.367311232670,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+  </Document>
+</kml>
