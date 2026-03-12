@@ -32,11 +32,12 @@ class ActionNodeExample(ActionExecutorBase):
         self.is_action_running = False
         self.waypoints = []  # Initialize waypoints as an empty list
         self.current_waypoint_index = 0  # Initialize the index
+        self.mission_waypoint_reference_index = 0  # Persisted across replans
         self.latest_plume_parameters = {
-            "focus": [0.0, 20.0],
+            "focus": [0.0, 0.0],
             "plume_lenth": 150.0,
             "plume_angle": 30.0,
-            "plume_direction": [1.0, 2.0],
+            "plume_direction": [1.0, 0.0],
         }
         self._active_move_goal_handle = None
         self._active_move_goal_token = 0
@@ -87,6 +88,7 @@ class ActionNodeExample(ActionExecutorBase):
         pass # self.get_logger().info(f"Current action arguments: {goal_request}") # NOT_ESSENTIAL_PRINT
         self._can_receive_new_goal = False
         self.is_action_running = True
+        self.mission_waypoint_reference_index = 0
 
         self.send_survey_path_gen()
 
@@ -119,6 +121,8 @@ class ActionNodeExample(ActionExecutorBase):
             self._active_move_goal_handle = None
         self.is_action_running = False
         self._can_receive_new_goal = True
+        self.current_waypoint_index = 0
+        self.mission_waypoint_reference_index = 0
 
     def cancel_goal_request(self, goal_handle):
         self.get_logger().info("Cancel goal request received")
@@ -199,7 +203,7 @@ class ActionNodeExample(ActionExecutorBase):
         self._replan_queued = False
         # Preserve mission progress in replans: skip as many new waypoints
         # as were already completed in the current path.
-        self._replan_skip_count = self.current_waypoint_index
+        self._replan_skip_count = self.mission_waypoint_reference_index
 
         if self._active_move_goal_handle is not None:
             cancel_future = self._active_move_goal_handle.cancel_goal_async()
@@ -260,6 +264,8 @@ class ActionNodeExample(ActionExecutorBase):
 
             self.waypoints = waypoints  # Assuming `waypoints` is part of the response
             self.current_waypoint_index = 0  # Reset index when waypoints are received
+            if reason != "replan":
+                self.mission_waypoint_reference_index = 0
             if reason == "replan":
                 self._replan_in_progress = False
                 if self._replan_queued:
@@ -362,6 +368,7 @@ class ActionNodeExample(ActionExecutorBase):
         if succeeded:
             # self.get_logger().info('Waypoint reached successfully') # NOT_ESSENTIAL_PRINT
             self.current_waypoint_index += 1
+            self.mission_waypoint_reference_index += 1
             if self.current_waypoint_index < len(self.waypoints):
                 next_waypoint = self.waypoints[self.current_waypoint_index]
                 self.send_goal(next_waypoint)

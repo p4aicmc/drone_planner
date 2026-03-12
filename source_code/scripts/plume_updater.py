@@ -9,6 +9,21 @@ from std_msgs.msg import String
 
 
 class PlumeUpdater(Node):
+    UPDATE_SPACING_SECONDS = 50.0
+    PLUME_UPDATES = [
+        {
+            "focus": [0.0, 10.0],          # (x, y) origin point of the plume
+            "plume_lenth": 150.0,         # length of the plume in meters
+            "plume_angle": 30.0,          # spread angle of the plume in degrees
+            "plume_direction": [1.0, 1.0] # (x, y) direction vector of the plume
+        },
+        {
+            "focus": [0.0, 20.0],
+            "plume_lenth": 150.0,
+            "plume_angle": 30.0,
+            "plume_direction": [0.0, 1.0]
+        }
+    ]
 
     def __init__(self):
         super().__init__('plume_updater')
@@ -17,60 +32,39 @@ class PlumeUpdater(Node):
             String, 'plume_update', 10
         )
 
-        self.new_plume = {
-            "focus": [0.0, 0.0],             # (x, y) origin point of the plume
-            "plume_lenth": 150.0,               # length of the plume in meters
-            "plume_angle": 30.0,               # spread angle of the plume in degrees
-            "plume_direction": [1.0, 1.0],    # (x, y) direction vector of the plume
-        }
-
-        self.startup_delay = 50.0             # wait 1 minute before publishing
-        self.second_update_delay = 50.0        # send a follow-up update a few seconds later
+        self.startup_delay = 50.0
 
         # One-shot timer to wait before starting to publish
         self.startup_timer = self.create_timer(self.startup_delay, self.start_publishing)
-        self.publish_timer = None
-        self.second_update_timer = None
+        self.update_timer = None
+        self.current_update_index = 0
 
     def start_publishing(self):
         self.destroy_timer(self.startup_timer)
         self.get_logger().info('Startup delay elapsed, beginning plume publishing.')
-        self.send_plume_update()  # Send the first update immediately
-        self.second_update_timer = self.create_timer(
-            self.second_update_delay,
-            self.send_second_plume_update
+        self.send_next_plume_update()
+        self.update_timer = self.create_timer(
+            self.UPDATE_SPACING_SECONDS,
+            self.send_next_plume_update
         )
 
-    def send_plume_update(self):
+    def send_next_plume_update(self):
+        if self.current_update_index >= len(self.PLUME_UPDATES):
+            if self.update_timer is not None:
+                self.destroy_timer(self.update_timer)
+                self.update_timer = None
+            self.get_logger().info('All plume updates published.')
+            return
+
+        plume_update = self.PLUME_UPDATES[self.current_update_index]
         msg = String()
-        msg.data = json.dumps(self.new_plume)
+        msg.data = json.dumps(plume_update)
 
         self.plume_publisher.publish(msg)
-        self.get_logger().info(f'Plume published: {msg.data}')
-
-    def send_second_plume_update(self):
-        # one-shot behavior for the follow-up timer
-        self.destroy_timer(self.second_update_timer)
-        self.second_update_timer = None
-
-        # slight variation to trigger replanning with near-identical plume shape
-        follow_up_plume = {
-            "focus": [
-                0.0,
-                -20.0,
-            ],
-            "plume_lenth": self.new_plume["plume_lenth"],
-            "plume_angle": self.new_plume["plume_angle"],
-            "plume_direction": [
-                1.0,
-                0.0,
-            ],
-        }
-
-        msg = String()
-        msg.data = json.dumps(follow_up_plume)
-        self.plume_publisher.publish(msg)
-        self.get_logger().info(f'Second plume published: {msg.data}')
+        self.get_logger().info(
+            f'Plume update {self.current_update_index + 1}/{len(self.PLUME_UPDATES)} published: {msg.data}'
+        )
+        self.current_update_index += 1
 
 
 def main(args=None):
