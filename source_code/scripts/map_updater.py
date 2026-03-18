@@ -14,39 +14,55 @@ class MapUpdater(Node):
         super().__init__('map_updater')
 
         package_share_dir = get_package_share_directory('route_executor2')
-        self.update_file = os.path.join(package_share_dir, 'data', 'map update1.json')
+        self.update_file_template = os.path.join(package_share_dir, 'data', 'map update{}.json')
+        self.update_index = 1
 
         self.client = self.create_client(StrInOut, 'data_server/update_map')
 
-        # Call the update after 90 seconds
-        self.timer = self.create_timer(90.0, self.send_update)
-        self.get_logger().info('Map updater started — will send update in 90 seconds')
+        # Call updates every x seconds
+        self.update_startup_delay = 60.0
+        self.update_interval = 50.0
+
+        self.start()
+
+    def start(self):
+
+        def delayed_start():
+            self.destroy_timer(self.timer)
+
+            self.timer = self.create_timer(self.update_interval, self.send_update)
+            self.get_logger().info('Map updater started')
+
+        self.timer = self.create_timer(self.update_startup_delay, delayed_start)
 
     def send_update(self):
-        self.destroy_timer(self.timer)
+        update_file = self.update_file_template.format(self.update_index)
 
         if not self.client.wait_for_service(timeout_sec=5.0):
             self.get_logger().error('data_server/update_map service not available')
             return
 
         try:
-            with open(self.update_file, 'r') as f:
+            with open(update_file, 'r') as f:
                 map_data = f.read()
             # Validate JSON before sending
             json.loads(map_data)
         except FileNotFoundError:
-            self.get_logger().error(f'File not found: {self.update_file}')
+            self.get_logger().info(f'There is no update file available. Stopping map updates.')
+            self.destroy_timer(self.timer)
             return
         except json.JSONDecodeError as e:
-            self.get_logger().error(f'Invalid JSON in update file: {e}')
+            self.get_logger().error(f'Invalid JSON in update file {update_file}: {e}')
+            self.destroy_timer(self.timer)
             return
 
         request = StrInOut.Request()
         request.message = map_data
 
-        self.get_logger().info('Sending map update...')
+        self.get_logger().info(f'Sending map update from {update_file}...')
         future = self.client.call_async(request)
         future.add_done_callback(self.response_callback)
+        self.update_index += 1
 
     def response_callback(self, future):
         try:

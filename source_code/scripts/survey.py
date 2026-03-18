@@ -158,6 +158,8 @@ class ActionNodeExample(ActionExecutorBase):
             self.get_logger().info('Mission stoped, dont call survey_path_get') # NOT_ESSENTIAL_PRINT
             return
 
+        self.get_logger().info(f"A")
+
         plume = self.plumes.get(self.target_plume_name)
         if plume is None:
             self.get_logger().error(f"Target plume '{self.target_plume_name}' not in map, cannot generate path")
