@@ -286,9 +286,9 @@ class ActionNodeExample(ActionExecutorBase):
                         self.replan_active_path()
                 return
             
-            self.get_logger().info('Received waypoints from path planner:') # NOT_ESSENTIAL_PRINT
-            for waypoint in response.waypoints:
-                self.get_logger().info(f"x: {waypoint.pose.position.x:20.15f} y: {waypoint.pose.position.y:20.15f}") # NOT_ESSENTIAL_PRINT
+            # self.get_logger().info('Received waypoints from survey path gen:') # NOT_ESSENTIAL_PRINT
+            # for waypoint in response.waypoints:
+            #     self.get_logger().info(f"x: {waypoint.pose.position.x:20.15f} y: {waypoint.pose.position.y:20.15f}") # NOT_ESSENTIAL_PRINT
 
             waypoints = response.waypoints
             if reason == "replan":
