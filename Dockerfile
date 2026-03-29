@@ -1,4 +1,4 @@
-FROM ros:humble-ros-base-jammy AS aptgetter
+FROM ros:jazzy-ros-base-noble AS aptgetter
 
 # Instala pacotes ROS 2 demo e MAVROS
 RUN apt-get update && apt-get install -y \
@@ -10,27 +10,24 @@ RUN apt-get update && apt-get install -y \
 # (Opcional) Instala os scripts de geodatabase do MAVROS
 RUN apt-get update && apt-get install -y \
       geographiclib-tools && \
-    /opt/ros/humble/lib/mavros/install_geographiclib_datasets.sh && \
+    /opt/ros/jazzy/lib/mavros/install_geographiclib_datasets.sh && \
     rm -rf /var/lib/apt/lists/*
 
 RUN cd /home && \
     git clone https://github.com/PX4/PX4-Autopilot.git --recursive && \
     bash PX4-Autopilot/Tools/setup/ubuntu.sh && \
     apt-get update && \
-    apt-get remove -y gz-harmonic && \
-    apt-get install -y aptitude && \
-    aptitude install -y gazebo libgazebo11 libgazebo-dev && \
-    python3 -m pip install shapely && \
     rm -rf /var/lib/apt/lists/*
 
 # Build PX4 in the Dockerfile to avoid runtime build delays
 RUN cd /home/PX4-Autopilot && \
-    DONT_RUN=1 make px4_sitl gazebo-classic
+    export HEADLESS=1 && \
+    export DONT_RUN=1 && \
+    timeout 600 make px4_sitl gz_x500 || true
 
 # install dependencies
-RUN python3 -m pip install --upgrade pip setuptools wheel
 COPY requirements.txt /home/mavros_navigator/
-RUN python3 -m pip install --no-cache-dir -r /home/mavros_navigator/requirements.txt
+RUN python3 -m pip install --break-system-packages --no-cache-dir -r /home/mavros_navigator/requirements.txt
 
 # Copy project files
 COPY source_code/ /home/mavros_navigator
@@ -43,7 +40,7 @@ RUN cd /home/mavros_navigator/src/harpia_msgs && \
 # Make Python scripts executable
 RUN chmod +x /home/mavros_navigator/scripts/*.py
 
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
+RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && \
     cd /home/mavros_navigator/src/harpia_msgs && \
     colcon build && \
     source install/setup.bash && \
@@ -62,6 +59,9 @@ COPY entrypoint.sh /entrypoint.sh
 # RUN rm -f /home/mavros_navigator/entrypoint.sh
 # RUN echo "#!/bin/bash\nls\nsleep 5" > /home/mavros_navigator/entrypoint.sh && chmod +x /home/mavros_navigator/entrypoint.sh
 
-RUN apt-get update && apt-get install -y coinor-libcbc3
+RUN apt-get update && apt-get install -y \
+      coinor-libcbc3.1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/lib/x86_64-linux-gnu/libCbc.so.3.1 /usr/lib/x86_64-linux-gnu/libCbc.so.3
 
 ENTRYPOINT ["/entrypoint.sh"]

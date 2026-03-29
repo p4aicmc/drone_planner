@@ -43,6 +43,7 @@ class ActionNodeExample(ActionExecutorBase):
         self._replan_in_progress = False
         self._replan_queued = False
         self._canceling_for_replan = False
+        self._replan_skip_count = 0
         self.survey_path_gen_group = MutuallyExclusiveCallbackGroup()
         self.action_client_group = MutuallyExclusiveCallbackGroup()
         self.cli_survey_path_gen = self.create_client(
@@ -91,6 +92,7 @@ class ActionNodeExample(ActionExecutorBase):
         self.progress_ = 0.0
         self._can_receive_new_goal = False
         self.is_action_running = True
+        self.mission_waypoint_reference_index = 0
 
         if plume_name not in self.plumes:
             self.get_logger().error(f"Plume '{plume_name}' not found in map, cannot start survey")
@@ -130,6 +132,8 @@ class ActionNodeExample(ActionExecutorBase):
             self._active_move_goal_handle = None
         self.is_action_running = False
         self._can_receive_new_goal = True
+        self.current_waypoint_index = 0
+        self.mission_waypoint_reference_index = 0
 
     def cancel_goal_request(self, goal_handle):
         self.get_logger().info("Cancel goal request received")
@@ -153,6 +157,8 @@ class ActionNodeExample(ActionExecutorBase):
         if not self.is_action_running:
             self.get_logger().info('Mission stoped, dont call survey_path_get') # NOT_ESSENTIAL_PRINT
             return
+
+        self.get_logger().info(f"A")
 
         plume = self.plumes.get(self.target_plume_name)
         if plume is None:
@@ -234,6 +240,9 @@ class ActionNodeExample(ActionExecutorBase):
         self._replan_in_progress = True
         self._canceling_for_replan = True
         self._replan_queued = False
+        # Preserve mission progress in replans: skip as many new waypoints
+        # as were already completed in the current path.
+        self._replan_skip_count = self.mission_waypoint_reference_index
 
         if self._active_move_goal_handle is not None:
             cancel_future = self._active_move_goal_handle.cancel_goal_async()
@@ -277,22 +286,25 @@ class ActionNodeExample(ActionExecutorBase):
                         self.replan_active_path()
                 return
             
-            self.get_logger().info('Received waypoints from path planner:') # NOT_ESSENTIAL_PRINT
-            for waypoint in response.waypoints:
-                self.get_logger().info(f"x: {waypoint.pose.position.x:20.15f} y: {waypoint.pose.position.y:20.15f}") # NOT_ESSENTIAL_PRINT
+            # self.get_logger().info('Received waypoints from survey path gen:') # NOT_ESSENTIAL_PRINT
+            # for waypoint in response.waypoints:
+            #     self.get_logger().info(f"x: {waypoint.pose.position.x:20.15f} y: {waypoint.pose.position.y:20.15f}") # NOT_ESSENTIAL_PRINT
 
             waypoints = response.waypoints
             if reason == "replan":
-                waypoints = waypoints[16:]
+                skip_count = max(0, self._replan_skip_count)
+                waypoints = waypoints[skip_count:]
                 if len(waypoints) <= 0:
                     self.get_logger().error(
-                        'Replanned path has no waypoints after skipping the first 10.'
+                        f'Replanned path has no waypoints after skipping the first {skip_count}.'
                     )
                     self._replan_in_progress = False
                     return
 
             self.waypoints = waypoints  # Assuming `waypoints` is part of the response
             self.current_waypoint_index = 0  # Reset index when waypoints are received
+            if reason != "replan":
+                self.mission_waypoint_reference_index = 0
             if reason == "replan":
                 self._replan_in_progress = False
                 if self._replan_queued:
@@ -395,6 +407,7 @@ class ActionNodeExample(ActionExecutorBase):
         if succeeded:
             # self.get_logger().info('Waypoint reached successfully') # NOT_ESSENTIAL_PRINT
             self.current_waypoint_index += 1
+            self.mission_waypoint_reference_index += 1
             if self.current_waypoint_index < len(self.waypoints):
                 next_waypoint = self.waypoints[self.current_waypoint_index]
                 self.send_goal(next_waypoint)

@@ -160,12 +160,17 @@ class RouteExecutor(Node):
         feedback_msg = MoveTo.Feedback()
         result = MoveTo.Result()
         self._cancel_requested = False  # Flag para gerenciar cancelamento
+        goal_finished = False
 
         # Future para monitorar a conclusão da meta
         goal_future = rclpy.task.Future()
 
         def timer_callback():
-            nonlocal goal_future
+            nonlocal goal_future, goal_finished
+
+            # Ignore late timer invocations after goal completion/cancellation.
+            if goal_finished or goal_future.done():
+                return
 
             # Atualizar feedback com a distância
             feedback_msg.distance = float(self.get_distance(self.waypoint))
@@ -173,19 +178,27 @@ class RouteExecutor(Node):
 
             # Checar se o objetivo foi alcançado
             if self.has_reached_waypoint(self.waypoint):
-                self._timer.cancel()  # Cancelar o timer
-                goal_handle.succeed()
+                goal_finished = True
+                if self._timer is not None:
+                    self._timer.cancel()  # Cancelar o timer
+                if goal_handle.is_active:
+                    goal_handle.succeed()
                 result.success = True
                 # self.get_logger().info('Movement completed successfully') # NOT_ESSENTIAL_PRINT
-                goal_future.set_result(result)
+                if not goal_future.done():
+                    goal_future.set_result(result)
 
             # Checar se o cancelamento foi solicitado
             elif self._cancel_requested:
-                self._timer.cancel()  # Cancelar o timer
-                goal_handle.canceled()
+                goal_finished = True
+                if self._timer is not None:
+                    self._timer.cancel()  # Cancelar o timer
+                if goal_handle.is_active:
+                    goal_handle.canceled()
                 result.success = False
                 self.get_logger().info('Action canceled') # NOT_ESSENTIAL_PRINT
-                goal_future.set_result(result)
+                if not goal_future.done():
+                    goal_future.set_result(result)
 
             # Publicar o setpoint atual
             else:

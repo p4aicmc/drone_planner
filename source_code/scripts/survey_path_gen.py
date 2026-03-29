@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 import rclpy
 import math
 import json
@@ -13,6 +14,7 @@ from std_srvs.srv import Trigger
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
+import csv
 
 # Adiciona o diretório base ao sys.path
 libs_path = os.path.join(os.path.dirname(__file__), './libs')
@@ -121,6 +123,26 @@ class SurveyPathGen(LifecycleNode):
         if not waypointsList:
             self.get_logger().error("Waypoints from the actual position are empty.")
 
+        # def write_wp_to_file(wps, title):
+        #     # self.get_logger().info(title)
+        #     try:
+        #         with open(f"/home/artur/exxon/{title}.csv", mode='w', newline='') as file:
+        #             writer = csv.writer(file)
+        #             for wp in wps:
+        #                 self.get_logger().info(f"{wp.pose.position.x:20.15f},{wp.pose.position.y:20.15f},{wp.pose.position.z:20.15f}")
+        #                 writer.writerow([wp.pose.position.x, wp.pose.position.y, wp.pose.position.z])
+        #     except IOError as e:
+        #         self.get_logger().error(f"Failed to write file {title}.csv: {e}")
+                    
+
+            
+
+        # write_wp_to_file(waypointsList, "Raw waypoints list")
+        self.subsample_path(waypointsList, max_step=10.0)
+        # write_wp_to_file(waypointsList, "Subsampled waypoints list")
+        self.apply_sinusoidal_pattern(waypointsList, amplitude=3.0, period=200.0)
+        # write_wp_to_file(waypointsList, "Final waypoints list")
+
         response.waypoints = waypointsList
 
         self.get_logger().info("Path generation complete.") # NOT_ESSENTIAL_PRINT
@@ -133,24 +155,65 @@ class SurveyPathGen(LifecycleNode):
 
         waypoints = []
 
-        direction  = v2(plume_direction[0], plume_direction[1])
+        plume_direction  = v2(plume_direction[0], plume_direction[1])
         length = plume_lenth
         angle = plume_angle
         step = 5
 
-        direction = direction / direction.length()
-        direction2 = v2(-direction.y, direction.x)
+        plume_direction = plume_direction / plume_direction.length()
+        perpendicular_plume_direction = v2(-plume_direction.y, plume_direction.x)
         angle_step = step*math.tan(math.radians(angle/2))
         sig = 1
-        s = v2(focus[0], focus[1])
+        focus = v2(focus[0], focus[1])
         for i in range(int(length/step)):
 
             sig = -sig
 
-            w = s + direction * (i * step) + direction2 * (sig * angle_step * i)
+            w = focus + plume_direction * (i * step) + perpendicular_plume_direction * (sig * angle_step * i)
             waypoints.append(self.create_waypoint_message(w.to_list()))
         
         return waypoints
+    
+    def subsample_path(self, waypoints, max_step=1.0):
+        if not waypoints:
+            return
+
+        subsampled = [waypoints[0]]
+        last_wp = waypoints[0]
+
+        for wp in waypoints[1:]:
+            dx = wp.pose.position.x - last_wp.pose.position.x
+            dy = wp.pose.position.y - last_wp.pose.position.y
+            dist = math.sqrt(dx**2 + dy**2)
+
+            if dist < max_step:
+                subsampled.append(wp)
+                last_wp = wp
+            else:
+                steps = math.ceil(dist / max_step)
+                for i in range(1, steps + 1):
+                    ratio = i / steps
+                    intermediate_wp = copy.deepcopy(last_wp)
+                    intermediate_wp.pose.position.x = last_wp.pose.position.x + ratio * dx
+                    intermediate_wp.pose.position.y = last_wp.pose.position.y + ratio * dy
+                    subsampled.append(intermediate_wp)
+                last_wp = wp
+
+        waypoints[:] = subsampled
+
+    def apply_sinusoidal_pattern(self, waypoints, amplitude=3.0, period=200.0):
+
+        travelled_distance = 0.0
+        last_wp = waypoints[0]
+        for wp in waypoints[1:]:
+            dx = wp.pose.position.x - last_wp.pose.position.x
+            dy = wp.pose.position.y - last_wp.pose.position.y
+            delta = math.sqrt(dx**2 + dy**2)
+            last_wp = wp
+
+            travelled_distance += delta
+
+            wp.pose.position.z += amplitude * math.cos(2 * math.pi * travelled_distance / period)
 
     def create_waypoint_message(self, waypoint):
         """
