@@ -1,7 +1,0 @@
-# Request
-string origin
-string destination
-
----
-# Response
-geometry_msgs/PoseStamped[] waypoints
