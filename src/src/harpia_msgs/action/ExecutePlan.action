@@ -1,0 +1,10 @@
+# (Empty goal)
+
+---
+# Resultado
+bool success
+
+---
+# Feedback
+int32 step
+int32 nofsteps
