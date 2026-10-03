@@ -1,0 +1,48 @@
+FROM ros@sha256:e9b9b98c1a867673789dfa1cb622b780e1ae6e5a0c235b0340d83c2b46f6171c AS aptgetter
+ENV SNAPSHOT_DATE=20260501T120000Z
+
+# Point apt to Ubuntu snapshot for reproducible builds
+RUN sed -i "s|http://archive.ubuntu.com/ubuntu|http://snapshot.ubuntu.com/ubuntu/${SNAPSHOT_DATE}|g" /etc/apt/sources.list && \
+    sed -i "s|http://security.ubuntu.com/ubuntu|http://snapshot.ubuntu.com/ubuntu/${SNAPSHOT_DATE}|g" /etc/apt/sources.list
+
+# Instala pacotes ROS 2 demo e MAVROS
+RUN apt-get update && apt-get install -y \
+            ros-jazzy-mavros \
+            ros-jazzy-xacro \
+            ros-jazzy-rviz2 \
+            ros-jazzy-rmw-cyclonedds-cpp \
+            ros-jazzy-ros-gz-bridge \
+            ros-jazzy-ros-gz \
+            git=1:2.43.0-1ubuntu7.3 \
+            bc=1.07.1-3ubuntu4 && \
+        rm -rf /var/lib/apt/lists/*
+
+# (Opcional) Instala os scripts de geodatabase do MAVROS
+RUN apt-get update && apt-get install -y \
+    geographiclib-tools=2.3-1build1 && \
+    /opt/ros/jazzy/lib/mavros/install_geographiclib_datasets.sh && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN cd /home && \
+    git clone https://github.com/PX4/PX4-Autopilot.git --recursive && \
+    cd PX4-Autopilot && \
+    git checkout a1726d316a941af9524f6279eb293a713d8fdcac && \
+    git submodule update --init --recursive && \
+    bash Tools/setup/ubuntu.sh && \
+    apt-get update && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build PX4 in the Dockerfile to avoid runtime build delays
+RUN cd /home/PX4-Autopilot && \
+    export HEADLESS=1 && \
+    export DONT_RUN=1 && \
+    timeout 300 make px4_sitl gz_x500 || true
+
+# install dependencies
+COPY container/requirements.txt /home/drone_planner/
+RUN python3 -m pip install --break-system-packages --no-cache-dir --ignore-installed -r /home/drone_planner/requirements.txt
+
+RUN apt-get update && apt-get install -y \
+    coinor-libcbc3.1=2.10.11+ds1-2 && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/lib/x86_64-linux-gnu/libCbc.so.3.1 /usr/lib/x86_64-linux-gnu/libCbc.so.3

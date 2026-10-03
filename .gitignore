@@ -4,15 +4,18 @@
 /.vscode
 **/.venv
 /venv
+sensoring_data/*.csv
 
-
-*/src/harpia_msgs/build
-*/src/harpia_msgs/install
-*/src/harpia_msgs/log
+**/build
+**/install
+**/log
 
 **/__pycache__/
 **/*.pyc
 **/*.pyo
 
-source_code/output/
-source_code/test/
+**/solver/*/output/*
+
+src/output/*
+
+drone_planner/src/drone_planner/output/

@@ -8,8 +8,21 @@ Harpia 2 is the ROS 2 version of the Harpia system for UAV mission and path plan
   
 ## Container build
 
-- docker build -t harpia2 .
-- docker run -it --rm --name harpia2 --network host harpia2
+As root in Ubuntu 22.04 or 24.04:
+```bash 
+xhost +local:root
+bash docker_build.sh
+bash docker_run.sh
+```
+
+### Running the full system in container
+
+- Open QGroundControl and make sure the connection with the drone is working
+- Inside the container navigate to the /home/drone_planner folder and execute the run.sh script:
+```bash 
+cd /home/drone_planner
+bash ./run.sh
+```
 
 ## Local instalation
 
