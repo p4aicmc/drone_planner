@@ -26,5 +26,5 @@ echo "Running project:"
 if [ -f "./process_output.py" ]; then
     stdbuf -o0 ros2 launch drone_planner harpia_launch.py ${1:+mission_index:=$1} 2>&1 | stdbuf -o0 python3 ./process_output.py
 else
-    ros2 launch drone_planner harpia_launch.py ${1:+mission_index:=$1}
+    exec ros2 launch drone_planner harpia_launch.py ${1:+mission_index:=$1}
 fi

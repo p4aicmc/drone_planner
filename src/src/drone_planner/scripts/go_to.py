@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 
-import os, sys, rclpy
-from ament_index_python.packages import get_package_share_directory
+import rclpy
 from rclpy.executors import MultiThreadedExecutor
-package_share_path = get_package_share_directory("drone_planner")
-scripts_path = os.path.join(package_share_path, 'scripts')
-sys.path.append(scripts_path)
-
-from action_executor_base import ActionExecutorBase
 from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn, LifecycleState
 
-
-import rclpy
-from rclpy.parameter import Parameter, ParameterType
-from harpia_msgs.srv import GeneratePath
+from action_planner.action_executor_base import ActionExecutorBase
+from drone_planner_msgs.srv import GeneratePath
 from geometry_msgs.msg import PoseStamped
-from harpia_msgs.action import MoveTo
+from drone_planner_msgs.action import MoveTo
 from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 

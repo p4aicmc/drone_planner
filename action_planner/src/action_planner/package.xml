@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>action_planner</name>
+  <version>0.1.0</version>
+  <description>action_planner framework: PDDL knowledge base, external temporal planners (OPTIC, TFD), plan execution over ROS 2 actions, mission control, lifecycle orchestration and an operator CLI. Robot-agnostic; a robot system plugs in a problem provider and action executor nodes.</description>
+
+  <maintainer email="raphaelbonaccorsi@usp.br">Raphael M. C. Bonaccorsi</maintainer>
+  <maintainer email="arturzahn@usp.br">Artur Zahn</maintainer>
+  <license>Apache License, Version 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>action_planner_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>action_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+  <exec_depend>python3-setuptools</exec_depend>
+  <!-- pip: unified_planning (see requirements.txt) -->
+
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

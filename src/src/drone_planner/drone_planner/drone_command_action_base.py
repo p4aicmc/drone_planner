@@ -1,19 +1,13 @@
-import os
-import sys
-
-from ament_index_python.packages import get_package_share_directory
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.lifecycle import TransitionCallbackReturn
 
-package_share_path = get_package_share_directory("drone_planner")
-scripts_path = os.path.join(package_share_path, 'scripts')
-sys.path.append(scripts_path)
-
-from action_executor_base import ActionExecutorBase
-from harpia_msgs.srv import DroneCommand
+from action_planner.action_executor_base import ActionExecutorBase
+from drone_planner_msgs.srv import DroneCommand
 
 
 class DroneCommandActionNode(ActionExecutorBase):
+    """Action executor that forwards a one-shot flight command (take_off, land)
+    to drone_control's `/drone_control/command` service and reports its outcome."""
     def __init__(self, command_name, default_altitude=0.0):
         super().__init__(command_name)
         self.command_name = command_name

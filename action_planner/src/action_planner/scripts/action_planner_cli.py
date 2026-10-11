@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
+"""Interactive operator CLI for the action_planner framework.
+
+Run it with the workspace sourced:  ros2 run action_planner action_planner_cli.py [command...]
+
+Commands are forwarded to command_interface ('command_interface/command'):
+  start_mission | cancel_mission | run <action> [args...] | cancel_action
+While the interactive prompt is open the CLI serves 'action_planner_cli/presence', which
+tells mission_controller to wait for start_mission instead of auto-starting.
+Extra tab-completion entries for your actions: ACTION_PLANNER_CLI_ACTIONS="go_to,take_off".
+"""
 import os
-import shlex
 import sys
 import threading
 
@@ -9,77 +18,33 @@ COMMANDS = [
     'cancel_mission',
     'cancel_action',
     'run',
-    'run go_to',
-    'run pulverize_region',
-    'run recharge_battery',
-    'run recharge_input',
-    'run take_off',
-    'run land',
     'exit',
     'quit',
 ]
+COMMANDS += [
+    f'run {action.strip()}'
+    for action in os.environ.get('ACTION_PLANNER_CLI_ACTIONS', '').split(',')
+    if action.strip()
+]
 
-
-def bootstrap_ros_environment():
-    if os.environ.get('DRONE_PLANNER_CLI_BOOTSTRAPPED') == '1':
-        return
-
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_dir = os.path.dirname(script_dir)
-    default_workspace = '/home/drone_planner'
-    if not os.path.isdir(default_workspace):
-        source_workspace = os.path.join(repo_dir, 'src')
-        default_workspace = (
-            source_workspace if os.path.isdir(source_workspace) else repo_dir
-        )
-    workspace_dir = os.environ.get('DRONE_PLANNER_WORKSPACE', default_workspace)
-    setup_files = []
-
-    if os.path.exists('/opt/ros/jazzy/setup.bash'):
-        setup_files.append('/opt/ros/jazzy/setup.bash')
-    elif os.path.exists('/opt/ros/humble/setup.bash'):
-        setup_files.append('/opt/ros/humble/setup.bash')
-
-    # harpia_msgs is part of this colcon workspace. Loading a separate nested
-    # harpia_msgs install can mix generated libraries from different builds.
-    setup_files.append(os.path.join(workspace_dir, 'install/setup.bash'))
-
-    existing_setup_files = [path for path in setup_files if os.path.exists(path)]
-    if not existing_setup_files:
-        return
-
-    source_commands = ' && '.join(
-        f'source {shlex.quote(path)}' for path in existing_setup_files
-    )
-    argv = ' '.join(shlex.quote(arg) for arg in sys.argv)
-    command = (
-        f'{source_commands} && '
-        'export DRONE_PLANNER_CLI_BOOTSTRAPPED=1 && '
-        f'exec {shlex.quote(sys.executable)} {argv}'
-    )
-
-    os.execv('/bin/bash', ['/bin/bash', '-lc', command])
-
-
-bootstrap_ros_environment()
 
 try:
     import readline
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node
-    from harpia_msgs.srv import StrInOut
+    from action_planner_msgs.srv import StrInOut
     from std_srvs.srv import Trigger
 except ImportError as error:
     print(f'Failed to import ROS dependencies: {error}', file=sys.stderr)
-    print('Build the drone_planner workspace first, then run this script again.', file=sys.stderr)
+    print('Source a workspace where action_planner is built, then run this script again.', file=sys.stderr)
     sys.exit(1)
 
 
 class CommandClient(Node):
     def __init__(self):
-        super().__init__('drone_planner_cli')
-        self.client = self.create_client(StrInOut, 'drone_planner/command')
+        super().__init__('action_planner_cli')
+        self.client = self.create_client(StrInOut, 'command_interface/command')
         self.presence_service = None
         self.background_executor = None
         self.background_executor_thread = None
@@ -88,7 +53,7 @@ class CommandClient(Node):
     def start_interactive_services(self):
         self.presence_service = self.create_service(
             Trigger,
-            'drone_planner_cli/presence',
+            'action_planner_cli/presence',
             self.presence_callback,
         )
         self.background_executor = MultiThreadedExecutor(num_threads=2)
@@ -109,7 +74,7 @@ class CommandClient(Node):
 
     def presence_callback(self, request, response):
         response.success = True
-        response.message = 'Drone Planner CLI is running'
+        response.message = 'action_planner CLI is running'
         return response
 
     def send_command(self, command):
@@ -176,13 +141,13 @@ def remember_command(command):
 def interactive_loop(command_client):
     command_client.start_interactive_services()
     configure_readline()
-    print('Drone Planner CLI. Type commands like start_mission or cancel_mission.')
+    print('action_planner CLI. Type commands like start_mission, cancel_mission or run <action> [args].')
     print('Type exit or quit to close.')
 
     try:
         while True:
             try:
-                command = input('drone_planner> ').strip()
+                command = input('action_planner> ').strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 return

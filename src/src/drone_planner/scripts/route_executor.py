@@ -9,9 +9,9 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 
 from geometry_msgs.msg import PoseStamped
-from harpia_msgs.action import MoveTo
-from harpia_msgs.msg import DroneSetpoint
-from harpia_msgs.srv import ReleaseControl, RequestControl
+from drone_planner_msgs.action import MoveTo
+from drone_planner_msgs.msg import DroneSetpoint
+from drone_planner_msgs.srv import ReleaseControl, RequestControl
 
 
 class RouteExecutor(Node):

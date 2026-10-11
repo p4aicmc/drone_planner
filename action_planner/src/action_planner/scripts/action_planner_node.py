@@ -1,33 +1,40 @@
 #!/usr/bin/env python3
 
-import rclpy, os, sys, subprocess, re, time, json
+import rclpy, os, subprocess, re, time, json, threading
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
-         
-from ament_index_python.packages import get_package_share_directory
-package_share_path = get_package_share_directory("drone_planner")
-scripts_path = os.path.join(package_share_path, 'scripts')
-sys.path.append(scripts_path)
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
-from action_planner_memory import ActionPlannerMemory
-from action_planner_executor import ActionPlannerExecutor
-from action_msgs.msg import GoalStatus
-from harpia_msgs.action import ActionCaller, ExecutePlan
-from harpia_msgs.srv import StrInOut
-from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
-from std_msgs.msg import String 
+from ament_index_python.packages import get_package_share_directory
+from action_msgs.msg import GoalStatus
+from action_planner_msgs.action import ActionCaller, ExecutePlan
+from action_planner_msgs.srv import StrInOut
+
+from action_planner.action_planner_memory import ActionPlannerMemory
+from action_planner.action_planner_executor import ActionPlannerExecutor
+
+PACKAGE_NAME = "action_planner"
 
 class ActionPlanner(LifecycleNode):
 
     def __init__(self):
         super().__init__('action_planner')
 
+        # Path of the PDDL domain file (required).
         self.declare_parameter("pddl_domain", "")
-        self.domain_file = self.get_parameter("pddl_domain").get_parameter_value().string_value
+        # Planner to call: a sub-directory of <share>/solver containing generate_plan.sh ("OPTIC" or "TFD").
+        self.declare_parameter("solver", "OPTIC")
+        # Where to dump the generated domain/problem for inspection. Empty means
+        # <workspace>/output, derived from the install location.
+        self.declare_parameter("output_dir", "")
 
-        # self.solver = "TFD"
-        self.solver = "OPTIC"
+        self.domain_file = self.get_parameter("pddl_domain").get_parameter_value().string_value
+        self.solver = self.get_parameter("solver").get_parameter_value().string_value
+        self.output_dir = self.get_parameter("output_dir").get_parameter_value().string_value
+
+        # Goal callbacks run concurrently (reentrant group + multithreaded executor);
+        # this lock makes "claim the plan slot" atomic.
+        self._goal_lock = threading.Lock()
 
     def on_configure(self, state: State) -> TransitionCallbackReturn:
         self.get_logger().info("Configuring action_planner node...")
@@ -65,7 +72,7 @@ class ActionPlanner(LifecycleNode):
             
             self.update_parameter_service = self.create_service(
                 StrInOut,
-                "plansys_interface/update_parameters",
+                "action_planner/update_parameters",
                 self.update_parameters_callback
             )
 
@@ -99,8 +106,7 @@ class ActionPlanner(LifecycleNode):
         the output into a plan list, and send it to plan_executor.
         """
 
-        project_name = "drone_planner"
-        share_path = get_package_share_directory(project_name)
+        share_path = get_package_share_directory(PACKAGE_NAME)
         solver_dir = os.path.join(share_path, "solver")
         domain_path = os.path.join(solver_dir, "domain.pddl")
         problem_path = os.path.join(solver_dir, "problem.pddl")
@@ -121,27 +127,9 @@ class ActionPlanner(LifecycleNode):
             self.get_logger().error(f"Failed to write problem file: {e}")
             return False
 
-        # write domain and problem to output folder
-        to_share = f'/install/{project_name}/share/{project_name}'
-        if to_share in share_path:
-            main_project_path = share_path.replace(to_share, '')
-        else:
-            main_project_path = share_path
-        try:
-            asd = os.path.join(main_project_path, 'output/domain.pddl')
-            with open(asd, "w") as f:
-                f.write(domain_pddl_text)
-        except Exception as e:
-            self.get_logger().error(f"Failed to write domain file: {e}")
-            return False
-        try:
-            asd = os.path.join(main_project_path, 'output/problem.pddl')
-            with open(asd, "w") as f:
-                f.write(problem_pddl_text)
-        except Exception as e:
-            self.get_logger().error(f"Failed to write problem file: {e}")
-            return False
-        
+        # Also dump domain and problem to the output folder for inspection (non-fatal).
+        self.dump_pddl_to_output(domain_pddl_text, problem_pddl_text, share_path)
+
         solver_subdir = os.path.join(solver_dir, self.solver)
         generate_script = os.path.join(solver_subdir, "generate_plan.sh")
         cmd = [generate_script, domain_path, problem_path]
@@ -183,30 +171,54 @@ class ActionPlanner(LifecycleNode):
         self.get_logger().info(f"Generated plan with {len(plan)} actions.")
         return plan
 
+    def dump_pddl_to_output(self, domain_pddl_text, problem_pddl_text, share_path):
+        output_dir = self.output_dir
+        if not output_dir:
+            # <ws>/install/<pkg>/share/<pkg> -> <ws>/output
+            to_share = f'/install/{PACKAGE_NAME}/share/{PACKAGE_NAME}'
+            workspace_path = share_path.replace(to_share, '') if to_share in share_path else share_path
+            output_dir = os.path.join(workspace_path, 'output')
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            with open(os.path.join(output_dir, 'domain.pddl'), "w") as f:
+                f.write(domain_pddl_text)
+            with open(os.path.join(output_dir, 'problem.pddl'), "w") as f:
+                f.write(problem_pddl_text)
+        except Exception as e:
+            self.get_logger().warn(f"Could not write PDDL copies to '{output_dir}': {e}")
+
     def exe_plan_goal_request(self, goal_request):
 
-        if not self._can_receive_execute_plan_goal: 
-            self.get_logger().warn("Cannot receive new goals at the moment, rejecting goal.")
-            return GoalResponse.REJECT
+        with self._goal_lock:
+            if not self._can_receive_execute_plan_goal:
+                self.get_logger().warn("Cannot receive new goals at the moment, rejecting goal.")
+                return GoalResponse.REJECT
 
-        if self.is_manual_action_busy():
-            self.get_logger().warn("Manual action is running, rejecting plan goal.")
-            return GoalResponse.REJECT
-        
-        if self.plan_executor.is_executing():
-            self.get_logger().warn("Already executing a plan, rejecting new goal.")
-            return GoalResponse.REJECT
-        
-        self.plan = self.generate_plan_custom_solver()
+            if self.is_manual_action_busy():
+                self.get_logger().warn("Manual action is running, rejecting plan goal.")
+                return GoalResponse.REJECT
+
+            if self.plan_executor.is_executing():
+                self.get_logger().warn("Already executing a plan, rejecting new goal.")
+                return GoalResponse.REJECT
+
+            # Claim the slot before planning: a second (or duplicated) goal request
+            # arriving while the solver runs must be rejected, not planned twice.
+            self._can_receive_execute_plan_goal = False
+
+        try:
+            self.plan = self.generate_plan_custom_solver()
+        except Exception as error:
+            self.get_logger().error(f"Planning raised an exception: {error}")
+            self.plan = None
 
         if not self.plan:
             self.get_logger().error("Failed to generate a valid plan, rejecting goal.")
+            self._can_receive_execute_plan_goal = True
             return GoalResponse.REJECT
-        
+
         self.get_logger().info("Plan generated successfully, accepting goal.")
-        
-        self._can_receive_execute_plan_goal = False
-        return GoalResponse.ACCEPT 
+        return GoalResponse.ACCEPT
         
     def exe_plan_cancel_request(self, goal_handle):
         if self._is_cancelling:
@@ -470,7 +482,7 @@ class ActionPlanner(LifecycleNode):
     
     def update_parameters_callback(self, request, response):
         """
-        Callback for the 'plansys_interface/update_parameters' service.
+        Callback for the 'action_planner/update_parameters' service.
         """
         try:
             json_commands = json.loads(request.message)
@@ -612,26 +624,6 @@ class ActionPlanner(LifecycleNode):
         # self.get_logger().info(problem_pddl)
         return True
     
-    def start_bat_sim(self):
-        # return
-        delay_time = 10
-        runout_time = 2*(78-4-delay_time)
-
-        timer = None
-        def delay_callback():
-            nonlocal timer
-            self.destroy_timer(timer)
-
-            def sim_bat_callback():
-                battery_amount = self.memory.get_function_value("battery_amount", [])
-                battery_amount -= 100/runout_time
-                if battery_amount < 0:
-                    battery_amount = 0
-                self.memory.set_function("battery_amount", [], battery_amount)
-
-            timer = self.create_timer(1, sim_bat_callback)
-        timer = self.create_timer(delay_time, delay_callback)
-
 def main(args=None):
     """
     Main function to initialize the action_planner node and handle spinning.

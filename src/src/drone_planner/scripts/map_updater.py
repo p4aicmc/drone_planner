@@ -5,7 +5,7 @@ import json
 import os
 from rclpy.node import Node
 from ament_index_python.packages import get_package_share_directory
-from harpia_msgs.srv import StrInOut
+from action_planner_msgs.srv import StrInOut
 
 
 class MapUpdater(Node):

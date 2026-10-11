@@ -5,7 +5,7 @@ import math
 import json
 from threading import Thread
 from rclpy.node import Node
-from harpia_msgs.srv import GeneratePath
+from drone_planner_msgs.srv import GeneratePath
 from geometry_msgs.msg import PoseStamped
 from ament_index_python.packages import get_package_share_directory
 import time, os, sys

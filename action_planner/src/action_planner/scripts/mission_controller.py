@@ -4,14 +4,25 @@ from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackRet
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.action import ActionClient
 from std_srvs.srv import Trigger
-from harpia_msgs.srv import StrInOut
-from harpia_msgs.action import ExecutePlan
+from action_planner_msgs.srv import StrInOut
+from action_planner_msgs.action import ExecutePlan
 from std_msgs.msg import String
 import json
 
 class MissionController(LifecycleNode):
+    """Drives a mission: fetch the problem from the provider, load it into
+    action_planner, run the plan, and replan when the provider publishes updates.
+
+    Parameters:
+      problem_service      Trigger service returning the problem as JSON
+                           (default 'problem_generator/get_problem').
+      problem_update_topic String topic with JSON update commands
+                           (default 'problem_generator/problem_update').
+    """
     def __init__(self):
         super().__init__('mission_controller')
+        self.declare_parameter('problem_service', 'problem_generator/get_problem')
+        self.declare_parameter('problem_update_topic', 'problem_generator/problem_update')
         self.update_parameters_client = None
         self.logger = self.get_logger()
         
@@ -28,10 +39,12 @@ class MissionController(LifecycleNode):
         # self.whatToRunWhenReplan = None
 
         # Create service client but don't activate it yet
-        self.update_parameters_client = self.create_client(StrInOut, 'plansys_interface/update_parameters')
-        self.get_problem_client = self.create_client(Trigger, 'problem_generator/get_problem')
-        self.cli_presence_client = self.create_client(Trigger, 'drone_planner_cli/presence')
-        self.problem_update_subscription = self.create_subscription(String, 'problem_generator/problem_update', self.problem_update_callback, 10)
+        problem_service = self.get_parameter('problem_service').value
+        problem_update_topic = self.get_parameter('problem_update_topic').value
+        self.update_parameters_client = self.create_client(StrInOut, 'action_planner/update_parameters')
+        self.get_problem_client = self.create_client(Trigger, problem_service)
+        self.cli_presence_client = self.create_client(Trigger, 'action_planner_cli/presence')
+        self.problem_update_subscription = self.create_subscription(String, problem_update_topic, self.problem_update_callback, 10)
         self.command_service = self.create_service(StrInOut, 'mission_controller/command', self.command_callback)
         self.goal_handle = None
         return TransitionCallbackReturn.SUCCESS
@@ -55,9 +68,9 @@ class MissionController(LifecycleNode):
 
         cli_is_open = self.is_cli_open()
         if cli_is_open:
-            self.logger.info('Drone Planner CLI detected, loading problem without auto-start.')
+            self.logger.info('action_planner CLI detected, loading problem without auto-start.')
         else:
-            self.logger.info('Drone Planner CLI not detected, loading problem and auto-starting mission.')
+            self.logger.info('action_planner CLI not detected, loading problem and auto-starting mission.')
             self.isMissionStarting = True
 
         self.get_problem(start_after_load=not cli_is_open)

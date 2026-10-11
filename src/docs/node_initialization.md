@@ -1,18 +1,20 @@
 # Node initialization sequence
 
 `harpia_launch.py` starts every process at once. The order in which the
-`drone_planner` nodes actually come up is decided at runtime by
-`lifecycle_manager.py`: each managed node is a ROS 2 lifecycle node, and the
-manager only configures and activates a node once every node it depends on is
-already `active`. The chart reads left to right: each numbered step lists
-the nodes that come up together once the previous step is fully active.
+lifecycle nodes actually come up is decided at runtime by the framework's
+`lifecycle_manager`: it configures and activates a node only once every node it
+depends on is already `active`. The dependency table is the `managed_nodes`
+parameter passed by `launch/harpia_launch.py` (one entry per node,
+`"node"` or `"node:dep1,dep2"`). The chart reads left to right: each numbered
+step lists the nodes that come up together once the previous step is fully
+active.
 
 ```mermaid
 flowchart LR
     mavros[("MAVROS<br/>arming, set_mode, land<br/>services")]
 
     subgraph s1["1"]
-        drone_control["drone_control"] ~~~ recharge_battery["recharge_battery"]
+        drone_control["drone_control"] ~~~ take_image["take_image"] ~~~ recharge_battery["recharge_battery"]
     end
 
     subgraph s2["2"]
@@ -20,11 +22,11 @@ flowchart LR
     end
 
     subgraph s3["3"]
-        problem_generator["problem_generator"] ~~~ path_planner["path_planner"] ~~~ survey_path_gen["survey_path_gen"]
+        problem_generator["problem_generator"] ~~~ path_planner["path_planner"]
     end
 
     subgraph s4["4"]
-        go_to["go_to"] ~~~ survey["survey"]
+        go_to["go_to"]
     end
 
     subgraph s5["5"]
@@ -40,41 +42,44 @@ flowchart LR
     mavros -.-> s1
     s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> ready
 
-    classDef managed fill:#e8f0fe,stroke:#2a78d6,color:#0b0b0b
+    classDef drone fill:#e8f0fe,stroke:#2a78d6,color:#0b0b0b
+    classDef framework fill:#e6f5ea,stroke:#2e8b57,color:#0b0b0b
     classDef external fill:#fdeee6,stroke:#eb6834,color:#0b0b0b
     classDef plain fill:#f4f4f2,stroke:#52514e,stroke-dasharray:4 2,color:#0b0b0b
-    class drone_control,recharge_battery,data_server,take_off,land,problem_generator,path_planner,survey_path_gen,go_to,survey,action_planner,mission_controller managed
+    class drone_control,take_image,recharge_battery,data_server,take_off,land,problem_generator,path_planner,go_to drone
+    class action_planner,mission_controller framework
     class mavros external
     class ready plain
 ```
 
+Blue nodes belong to `drone_planner`, green nodes to `action_planner`.
 Each numbered step waits for every node of the previous step to be `active`
 before its own nodes are configured and activated. Nodes inside the same step
 come up concurrently. MAVROS must be running before step 1 completes, because
 `drone_control` waits for its services during activation. `lifecycle_manager`,
-`command_interface` and `route_executor` are plain nodes that start
-immediately with the launch file and are not part of the sequence.
+`command_interface` (framework) and `route_executor` (drone) are plain nodes
+that start immediately with the launch file and are not part of the sequence.
 
-Why each step depends on the previous one, from the `depends_on` table in
-`lifecycle_manager.py`:
+Why each step depends on the previous one, from `managed_nodes` in
+`harpia_launch.py`:
 
-| Step | Nodes | Wait for |
-|---|---|---|
-| 1 | drone_control, recharge_battery | nothing |
-| 2 | data_server, take_off, land | drone_control |
-| 3 | problem_generator, path_planner, survey_path_gen | data_server |
-| 4 | go_to, survey | path_planner, survey_path_gen (and the `/drone/move_to_waypoint` action server of route_executor) |
-| 5 | action_planner | go_to, survey, recharge_battery, take_off, land |
-| 6 | mission_controller | action_planner, problem_generator |
+| Step | Nodes | Package | Wait for |
+|---|---|---|---|
+| 1 | drone_control, take_image, recharge_battery | drone_planner | nothing |
+| 2 | data_server, take_off, land | drone_planner | drone_control |
+| 3 | problem_generator, path_planner | drone_planner | data_server |
+| 4 | go_to | drone_planner | path_planner (and the `/drone/move_to_waypoint` action server of route_executor) |
+| 5 | action_planner | action_planner | go_to, take_image, recharge_battery, take_off, land |
+| 6 | mission_controller | action_planner | action_planner, problem_generator |
 
 
 ## How the manager decides
 
-- **Discovery.** For every entry in its `nodes` table the manager polls the
-  node's `get_state` service every 0.2 s. A node that does not answer within
-  100 tries (about 20 s) is logged as not found and dropped from the table.
-  Any node that lists it as a dependency then makes the manager raise a
-  `KeyError` on its next tick, so startup aborts rather than stalls.
+- **Discovery.** For every entry in its table the manager polls the node's
+  `get_state` service every 0.2 s. A node that does not answer within 100 tries
+  (about 20 s) is logged as not found and dropped from the table. Any node that
+  lists it as a dependency then makes the manager raise a `KeyError` on its next
+  tick, so startup aborts rather than stalls.
 - **Start.** Once every managed node has reported a state, the manager starts a
   0.5 s timer. On each tick it walks the table and, for every node whose
   dependencies are all `active`, sends `configure` if the node is
@@ -93,18 +98,16 @@ Why each step depends on the previous one, from the `depends_on` table in
   Its `on_activate` waits up to 10 s for `/mavros/cmd/arming`,
   `/mavros/set_mode` and `/mavros/cmd/land` and returns `ERROR` if any is
   missing. If MAVROS is not up, nothing beyond step 1 is even configured.
-- **route_executor.** `go_to` and `survey` block in `on_activate` until the
+- **route_executor.** `go_to` blocks in `on_activate` until the
   `/drone/move_to_waypoint` action server exists. That server is
   `route_executor`, a plain node started by the launch file, so it is normally
   already there; if it crashed, step 4 never completes.
 - **data_server services.** `path_planner` blocks in `on_configure` until
   `data_server/home_position` and `data_server/drone_position` are available,
-  `survey_path_gen` until `data_server/home_position` is, and
-  `mission_controller` fails activation if `problem_generator/get_problem` or
-  `plansys_interface/update_parameters` (served by `action_planner`) is not up
-  within 5 s. The dependency table already orders these correctly, so they
-  only matter if an earlier node activated without actually creating its
-  services.
+  and `mission_controller` fails activation if `problem_generator/get_problem`
+  or `action_planner/update_parameters` is not up within 5 s. The dependency
+  table already orders these correctly, so they only matter if an earlier node
+  activated without actually creating its services.
 
 ## Nodes outside the manager
 
@@ -112,12 +115,13 @@ Why each step depends on the previous one, from the `depends_on` table in
   plain `rclpy` nodes. They start as soon as the launch file runs them and are
   not gated on anything, although `route_executor` only requests control of
   the drone from `drone_control` when its first goal arrives.
-- `command_interface` forwards commands from the CLI to `mission_controller`
-  and `action_planner`, so it is only useful once step 6 is done.
+- `command_interface` forwards commands from the CLI (`command_interface/command`) to
+  `mission_controller` and `action_planner`, so it is only useful once step 6
+  is done.
 
 ## After activation
 
-When `mission_controller` activates it checks whether the drone_planner CLI is
-present (`drone_planner_cli/presence`). It then asks `problem_generator` for
-the PDDL problem. Without the CLI it starts the mission right away; with the
-CLI it loads the problem and waits for a start command.
+When `mission_controller` activates it checks whether the action_planner CLI is
+present (`action_planner_cli/presence`). It then asks `problem_generator` for the PDDL
+problem. Without the CLI it starts the mission right away; with the CLI it
+loads the problem and waits for a `start_mission` command.

@@ -18,6 +18,7 @@ sudo -E docker run --rm -it \
   --volume "${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority:rw" \
   --volume harpia_drone_planner_vscode_server:/root/.vscode-server:rw \
   --volume "$REPO_ROOT/scripts:/home/scripts:rw" \
+  --volume "$REPO_ROOT/action_planner:/home/action_planner:rw" \
   --volume "$REPO_ROOT/src:/home/drone_planner:rw" \
   --device /dev/dri:/dev/dri \
   harpia2_drone_planner_dev

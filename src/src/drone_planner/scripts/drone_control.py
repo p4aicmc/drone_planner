@@ -15,8 +15,8 @@ from std_msgs.msg import String
 from mavros_msgs.msg import ExtendedState, State as MavrosState
 from mavros_msgs.srv import CommandBool, CommandTOL, SetMode
 
-from harpia_msgs.msg import DroneSetpoint
-from harpia_msgs.srv import DroneCommand, ReleaseControl, RequestControl
+from drone_planner_msgs.msg import DroneSetpoint
+from drone_planner_msgs.srv import DroneCommand, ReleaseControl, RequestControl
 
 
 class DroneControl(LifecycleNode):

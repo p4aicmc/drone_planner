@@ -15,7 +15,7 @@ from shapely.geometry import Point, Polygon
 from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
 from std_msgs.msg import String
 
-from harpia_msgs.srv import StrInOut
+from action_planner_msgs.srv import StrInOut
 
 class DataServer(LifecycleNode):
 

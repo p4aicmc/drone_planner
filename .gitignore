@@ -19,3 +19,4 @@ sensoring_data/*.csv
 src/output/*
 
 drone_planner/src/drone_planner/output/
+action_planner/output/

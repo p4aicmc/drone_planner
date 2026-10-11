@@ -1,0 +1,11 @@
+{
+    "instances": ["hall room", "lab room", "office room"],
+    "predicates": ["at hall"],
+    "functions": [
+        "(distance hall hall) 0.0", "(distance hall lab) 5.0", "(distance hall office) 8.0",
+        "(distance lab hall) 5.0", "(distance lab lab) 0.0", "(distance lab office) 3.0",
+        "(distance office hall) 8.0", "(distance office lab) 3.0", "(distance office office) 0.0",
+        "(total_distance) 0.0"
+    ],
+    "goals": ["inspected lab", "inspected office", "at hall"]
+}

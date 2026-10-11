@@ -37,9 +37,10 @@ def bootstrap_ros_environment():
     elif os.path.exists('/opt/ros/humble/setup.bash'):
         setup_files.append('/opt/ros/humble/setup.bash')
 
+    # Drone workspace: <repo>/src on a host checkout, /home/drone_planner in the container.
     setup_files.extend([
-        os.path.join(repo_dir, 'src/drone_planner/src/harpia_msgs/install/setup.bash'),
-        os.path.join(repo_dir, 'src/drone_planner/install/setup.bash'),
+        os.path.join(repo_dir, 'src/install/setup.bash'),
+        '/home/drone_planner/install/setup.bash',
     ])
 
     existing_setup_files = [path for path in setup_files if os.path.exists(path)]

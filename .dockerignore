@@ -1,0 +1,8 @@
+# Keep host build artifacts and virtualenvs out of the image build context
+**/build
+**/install
+**/log
+**/output
+**/__pycache__
+map_generator/.venv
+.git

@@ -2,7 +2,7 @@ from rclpy.action import ActionClient
 from lifecycle_msgs.srv import ChangeState
 from lifecycle_msgs.msg import Transition
 from enum import Enum
-from harpia_msgs.action import ActionCaller
+from action_planner_msgs.action import ActionCaller
 from action_msgs.msg import GoalStatus
 
 class ActionState(Enum):

@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
+import time
+
 import rclpy
 from rclpy.node import Node
-from rclpy.wait_for_message import wait_for_message
+from rclpy.exceptions import ParameterUninitializedException
 from lifecycle_msgs.srv import ChangeState, GetState
 from lifecycle_msgs.msg import Transition, TransitionEvent
 
 class LifecycleMannager(Node):
+    """Brings lifecycle nodes up in dependency order.
+
+    Each managed node is configured and then activated only once every node it
+    depends on is `active`. The table comes from the `managed_nodes` string-array
+    parameter, one entry per node: "node_name" or "node_name:dep1,dep2".
+    """
+    STATE_REPLY_TIMEOUT_SEC = 2.0
+
     def __init__(self):
-        super().__init__('lifecycle_controller')
+        super().__init__('lifecycle_manager')
 
         self.nodes = {}
         self.state_clients = {}
@@ -62,6 +72,7 @@ class LifecycleMannager(Node):
 
                 request = GetState.Request()
                 future = client.call_async(request)
+                self.nodes[node_name]['state_requested_at'] = time.monotonic()
                 self.track_future(f'get_state:{node_name}:initial', future, handle_get_state_response)
 
             elif tries > 100:
@@ -80,7 +91,15 @@ class LifecycleMannager(Node):
         if self.wait_for_nodes_timer is None:
 
             def wait_for_nodes():
-                # self.get_logger().info(f'Checking nodes...')
+                # Right after start-up a service reply can be lost while DDS discovery is
+                # still settling; without this retry the manager would wait forever.
+                now = time.monotonic()
+                for node_name, node in self.nodes.items():
+                    requested_at = node.get('state_requested_at')
+                    if node['state'] is None and requested_at is not None and now - requested_at > self.STATE_REPLY_TIMEOUT_SEC:
+                        self.get_logger().warn(f'No state reply from {node_name} yet, asking again')
+                        node['state_requested_at'] = now
+                        self.refresh_node_state(node_name)
 
                 if all([node['state'] is not None for node in self.nodes.values()]):
                     self.wait_for_nodes_timer.cancel()
@@ -232,56 +251,46 @@ class LifecycleMannager(Node):
         if state == 'active':
             self.get_logger().info(f'{node_name} activated successfully')
 
-nodes = [
-    {
-        'node_name': 'data_server',
-        'depends_on': ['drone_control']
-    },
-    {
-        'node_name': 'problem_generator',
-        'depends_on': ['data_server']
-    },
-    {
-        'node_name': 'path_planner',
-        'depends_on': ['data_server']
-    },
-    {
-        'node_name': 'drone_control',
-        'depends_on': []
-    },
-    {
-        'node_name': 'mission_controller',
-        'depends_on': ['action_planner', 'problem_generator'] # not anymore 'plansys_interface'
-    },
-    {
-        'node_name': 'action_planner',
-        'depends_on': ['go_to', 'take_image', 'recharge_battery', 'take_off', 'land']
-    },
-    {
-        'node_name': 'go_to',
-        'depends_on': ['path_planner']
-    },
-    {
-        'node_name': 'take_image',
-        'depends_on': []
-    },
-    {
-        'node_name': 'recharge_battery',
-        'depends_on': []
-    },
-    {
-        'node_name': 'take_off',
-        'depends_on': ['drone_control']
-    },
-    {
-        'node_name': 'land',
-        'depends_on': ['drone_control']
-    },
-]
+def parse_managed_nodes(entries):
+    """Parse the `managed_nodes` parameter: each entry is "node" or "node:dep1,dep2"."""
+    nodes = []
+    for entry in entries:
+        entry = entry.strip()
+        if not entry:
+            continue
+        name, _, deps = entry.partition(':')
+        depends_on = [dep.strip() for dep in deps.split(',') if dep.strip()]
+        nodes.append({'node_name': name.strip(), 'depends_on': depends_on})
+
+    known = {node['node_name'] for node in nodes}
+    for node in nodes:
+        for dep in node['depends_on']:
+            if dep not in known:
+                raise ValueError(f"'{node['node_name']}' depends on '{dep}', which is not a managed node")
+    return nodes
+
 
 def main(args=None):
     rclpy.init(args=args)
     manager_node = LifecycleMannager()
+
+    manager_node.declare_parameter('managed_nodes', rclpy.Parameter.Type.STRING_ARRAY)
+    try:
+        entries = manager_node.get_parameter('managed_nodes').value
+        nodes = parse_managed_nodes(entries)
+    except ParameterUninitializedException:
+        manager_node.get_logger().error(
+            "Parameter 'managed_nodes' is not set. Pass the dependency table, e.g. "
+            "managed_nodes: ['drone_control', 'data_server:drone_control', ...]")
+        nodes = []
+    except ValueError as error:
+        manager_node.get_logger().error(f'Invalid managed_nodes parameter: {error}')
+        nodes = []
+
+    if not nodes:
+        manager_node.destroy_node()
+        rclpy.shutdown()
+        return 1
 
     manager_node.add_nodes(nodes)
     manager_node.wait_for_nodes_and_start()

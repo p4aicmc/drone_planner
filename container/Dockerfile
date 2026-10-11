@@ -47,18 +47,16 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/* && \
     ln -sf /usr/lib/x86_64-linux-gnu/libCbc.so.3.1 /usr/lib/x86_64-linux-gnu/libCbc.so.3
 
-# Copy project files
+# Copy project files: the planning framework and the drone workspace that imports it
+COPY action_planner/ /home/action_planner
 COPY src/ /home/drone_planner
 
-RUN cd /home/drone_planner/ && \
-    rm -rf build install log
+RUN cd /home/action_planner && rm -rf build install log && \
+    cd /home/drone_planner && rm -rf build install log
 
-RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && \
-    cd /home/drone_planner/ && \
-    colcon build && \
-    source install/setup.bash && \
-    chmod +x install/drone_planner/share/drone_planner/solver/OPTIC/generate_plan.sh install/drone_planner/share/drone_planner/solver/OPTIC/optic-clp && \
-    chmod +x install/drone_planner/share/drone_planner/solver/TFD/generate_plan.sh install/drone_planner/share/drone_planner/solver/TFD/downward/preprocess/preprocess install/drone_planner/share/drone_planner/solver/TFD/downward/search/search"
+# build.sh builds the framework packages (/home/action_planner/src) and the
+# drone packages into the single workspace /home/drone_planner/install
+RUN /bin/bash -c "cd /home/drone_planner/ && ./build.sh"
 
 COPY scripts/ /home/scripts
 

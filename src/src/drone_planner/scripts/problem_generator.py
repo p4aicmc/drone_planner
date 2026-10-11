@@ -308,7 +308,7 @@ class ProblemGenerator(LifecycleNode):
 
             problem_updates[object_name]['remove'] = old_objects # the remaining objects in the old_objects are removed ones 
 
-        # Convert the problem updates to the format required by the plansys_interface
+        # Convert the problem updates to the format required by action_planner/update_parameters
         formatted_updates = []
         for key, value in problem_updates.items():
             self.get_logger().info(f'{key}: {value}')

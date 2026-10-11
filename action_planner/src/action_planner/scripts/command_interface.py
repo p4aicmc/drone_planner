@@ -6,10 +6,16 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
-from harpia_msgs.srv import StrInOut
+from action_planner_msgs.srv import StrInOut
 
 
 class CommandInterface(Node):
+    """Single entry point for operator commands ('command_interface/command', StrInOut).
+
+    start_mission / cancel_mission go to mission_controller; run <action> [args]
+    and cancel_action go to action_planner. A mission is only started when no
+    manual action is running.
+    """
     def __init__(self):
         super().__init__('command_interface')
         self.callback_group = ReentrantCallbackGroup()
@@ -25,7 +31,7 @@ class CommandInterface(Node):
         )
         self.command_service = self.create_service(
             StrInOut,
-            'drone_planner/command',
+            'command_interface/command',
             self.command_callback,
             callback_group=self.callback_group,
         )

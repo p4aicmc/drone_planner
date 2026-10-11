@@ -1,0 +1,5 @@
+# Python dependencies of the action_planner framework (pip, not ROS packages).
+# Install with: python3 -m pip install --break-system-packages --ignore-installed -r requirements.txt
+# numpy is pinned to the version shipped by Ubuntu 24.04 so ROS python packages keep working.
+numpy==1.26.4
+unified_planning==1.2.0
