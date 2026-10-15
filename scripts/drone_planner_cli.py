@@ -10,7 +10,6 @@ COMMANDS = [
     'cancel_action',
     'run',
     'run go_to',
-    'run pulverize_region',
     'run recharge_battery',
     'run recharge_input',
     'run take_off',

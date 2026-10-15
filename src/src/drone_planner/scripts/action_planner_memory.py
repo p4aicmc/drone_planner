@@ -317,40 +317,40 @@ class ActionPlannerMemory:
 
     def _are_conditions_met(self, at_start_conditions):
         current_state = self.pddl.initial_values
+        return all(self._is_condition_met(condition, current_state)
+                   for condition in at_start_conditions)
 
-        for condition in at_start_conditions:
-            if hasattr(condition, 'node_type') and condition.node_type.name in {
-                'GT', 'GE', 'LT', 'LE', 'EQUALS'
-            }:
-                left_expr, right_expr = condition.args
-                # self.get_logger().info("evaluating left side:")
-                left_val = self._evaluate_expression(left_expr, current_state)
-                # self.get_logger().info("\n\nevaluating right side:")
-                right_val = self._evaluate_expression(right_expr, current_state)
+    def _is_condition_met(self, condition, state):
+        kind = condition.node_type
 
-                # Apply the operator
-                if condition.node_type.name == 'GT':
-                    satisfied = left_val > right_val
-                elif condition.node_type.name == 'GE':
-                    satisfied = left_val >= right_val
-                elif condition.node_type.name == 'LT':
-                    satisfied = left_val < right_val
-                elif condition.node_type.name == 'LE':
-                    satisfied = left_val <= right_val
-                elif condition.node_type.name == 'EQUALS':
-                    satisfied = left_val == right_val
-                else:
-                    satisfied = False
+        if kind == OperatorKind.NOT:
+            return not self._is_condition_met(condition.args[0], state)
+        if kind == OperatorKind.AND:
+            return all(self._is_condition_met(arg, state) for arg in condition.args)
+        if kind == OperatorKind.OR:
+            return any(self._is_condition_met(arg, state) for arg in condition.args)
+        if kind == OperatorKind.IMPLIES:
+            left, right = condition.args
+            return (not self._is_condition_met(left, state)
+                    or self._is_condition_met(right, state))
+        if kind == OperatorKind.IFF:
+            left, right = condition.args
+            return self._is_condition_met(left, state) == self._is_condition_met(right, state)
+        if kind in {OperatorKind.LT, OperatorKind.LE, OperatorKind.EQUALS}:
+            left, right = (self._evaluate_expression(arg, state)
+                           for arg in condition.args)
+            if kind == OperatorKind.LT:
+                return left < right
+            if kind == OperatorKind.LE:
+                return left <= right
+            return left == right
+        if kind == OperatorKind.FLUENT_EXP:
+            value = state.get(condition, False)
+            return value.constant_value() if hasattr(value, 'constant_value') else bool(value)
+        if condition.is_bool_constant():
+            return condition.constant_value()
 
-                if not satisfied:
-                    return False
-            else:
-                value = current_state.get(condition, False)
-                value = str(value)=="true" # convert to boolean
-                if not value:
-                    return False
-
-        return True
+        raise NotImplementedError(f"Unsupported condition: {condition}")
 
 
     # def substitute_parameters(self, condition, substitution_map):
@@ -416,10 +416,18 @@ class ActionPlannerMemory:
             cond.substitute(substitution_map)
             for cond in conditions
         ]
-        # self.get_logger().info(f"resolved_conditions: {resolved_conditions}")
+        self.get_logger().info(f"resolved_conditions: {resolved_conditions}")
 
         # Check if resolved conditions are met
-        all_met = self._are_conditions_met(resolved_conditions)
+        # all_met = self._are_conditions_met(resolved_conditions)
+        all_met = True
+        for c in resolved_conditions:
+            if not self._are_conditions_met([c]):
+                self.get_logger().info(f'not true: {c}')
+                all_met = False
+                break
+
+
         # self.get_logger().info(f"All met: {all_met}")
         return all_met
 

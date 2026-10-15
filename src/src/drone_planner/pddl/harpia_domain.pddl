@@ -8,60 +8,27 @@
     )
 
     (:predicates
-
         (at ?region - region)
         (been_at ?region - region)
-        (carry)  
-        
-        (can_spray)
-        ;;se pode carregar/descarregar
-        (can_recharge)
-        ;se já tirou a foto
         (taken_image ?region - region)
-        ;se pulverizou
         (pulverized ?region - region)
-        ; (canGo)
-        (can_take_pic)
-        (its_not_base ?region - region)
         (pulverize_goal ?region - region)
         (picture_goal ?region - region)
-        (hw_ready ?from - region ?to - region)
-
-        ; (can_go_to_base)
-        ; (has_pulverize_goal)
-        ; (has_picture_goal)
-        ; (at_move)
-
+        (is_flying)
+        (is_not_flying)
     )
 
    
     (:functions
-    
-
-        ;; Variavel q controla bateria em porcentagem
-        (battery_amount)
-        ;; quantidade de insumo
-        (input_amount)
-        ;;velocidade de carregar a bateria em porcentagem por segundos
-        (recharge_rate_battery)
-        ;;velocidade de descarregar a bateria
-        (discharge_rate_battery)
-        ;;capacidade maxima bateria
-        (battery_capacity)
-        ;;capacidade maxima de insumo
-        (input_capacity)
-        ;;velocidade de reabastecer o insumo
-        (recharge_rate_input)
-        ;;distancia entre regioes em metros
-        (distance ?from_region - region ?to_region - region)
-        ;;velocidade em m/s
-        (velocity)
-        (picture_path_len ?region - region)
-        (pulverize_path_len ?region - region)
-        (total_goals)
-        (goals_achived)
+        (battery_amount)                                     ;; Variavel q controla bateria em porcentagem
+        (battery_capacity)                                   ;;capacidade maxima bateria
+        (battery_recharge_rate)
+        (distance ?from_region - region ?to_region - region) ;;distancia entre regioes em metros
         (mission_length)
-
+        (cruising_speed)
+        (take_off_time)
+        (land_time)
+        (take_image_time ?region - region)
     )
 
 
@@ -70,26 +37,19 @@
              ?from_region - region 
              ?to_region - region)
         :duration
-            (= ?duration 5)
+            (= ?duration ( /(distance ?from_region ?to_region) (cruising_speed)))
         :condition (and
+            (at start (not (= ?from_region ?to_region)))
             (at start (at ?from_region))
-            ; (> (battery_amount) (+ (* (/ (distance ?from_region ?to_region) (velocity)) (discharge_rate_battery)) 15))
+            (over all (> (battery_capacity) 0))
+            (over all (is_flying))
         )
         :effect (and 
-                (at start (not (at ?from_region)))
-                (at end (been_at ?to_region))
-                (at end (at ?to_region))
-                (at end (decrease (battery_amount ) 
-                      (*
-                          (/
-                              (distance ?from_region ?to_region)
-                              (velocity)
-                          )
-                          (discharge_rate_battery)
-                      )
-          
-                ))
-                (at end(increase (mission_length) (distance ?from_region ?to_region)))
+            (at start (not (at ?from_region)))
+            (at end (been_at ?to_region))
+            (at end (at ?to_region))
+            ; (at end (decrease (battery_amount) 1))
+            (at end(increase (mission_length) (/ (distance ?from_region ?to_region) 2)))
         )
     )
     
@@ -98,75 +58,32 @@
             ?region - region
         )
         :duration
-            (= ?duration 1)
+            (= ?duration (take_image_time ?region))
         :condition(and
             (over all(at ?region))
             (over all(picture_goal ?region))
-            ; (> (battery_amount) 
-            ;     (*
-            ;         (/
-            ;             1000
-            ;             (velocity)
-            ;         )
-            ;         (discharge_rate_battery)
-            ;     )
-            ; )
+            (over all (is_flying))
+            (at start (> (battery_amount) 50))
        )
         :effect(and
             (at end(taken_image ?region))
             (at end(increase (mission_length) 1000))
-            (at end(decrease (battery_amount) 
-                (*
-                    (/
-                        1000
-                        (velocity)
-                    )
-                    (discharge_rate_battery)
-                )
-            ))
+            ; (at end(decrease (battery_amount) 10))
         )
     )
-    (:durative-action pulverize_region
-        :parameters (
-            ?region - region)
-        :duration
-            (= ?duration 1)
-        :condition(and
-            (over all(at ?region))
-            (over all(pulverize_goal ?region))
-            (at start(> (input_amount) 0))
-            ; (> (battery_amount) 
-            ;     (*
-            ;         (/
-            ;             314
-            ;             (velocity)
-            ;         )
-            ;         (discharge_rate_battery)
-            ;     )
-            ; )
-       )
-        :effect(and
-            (at end(pulverized ?region))
-            (at end(increase (mission_length) 314))
-            (at end(decrease (input_amount) 1))
-            (at end(decrease (battery_amount)
-                (*
-                    (/
-                        314
-                        (velocity)
-                    )
-                    (discharge_rate_battery)
-                )
-            ))
-        )
-    )
+
     (:durative-action recharge_battery
         :parameters (?base - base)
         :duration
-            (= ?duration 1)
+            (= ?duration 
+                (/
+                    (- (battery_capacity) (battery_amount))
+                    (battery_recharge_rate)
+                )
+            )
         :condition (and
             (over all(at ?base))
-            ;(< (battery_amount) 60)
+            (over all (is_not_flying))
         )
         :effect 
         (and
@@ -174,17 +91,31 @@
         )
     )
 
-    (:durative-action recharge_input
-        :parameters (?base - base)
-        :duration
-            (= ?duration 1)
-        :condition (and
-            (over all(at ?base))
-            (at start(< (input_amount) (/ (input_capacity) 2)))
+    (:durative-action take_off
+        :parameters ()
+        :duration (= ?duration (take_off_time))
+        :condition (and 
+            (at start (is_not_flying))
         )
-        :effect 
-        (and
-            (at end(assign (input_amount) (input_capacity)))
+        :effect (and 
+            (at end (and 
+            (is_flying)
+            (not (is_not_flying))
+            ))
+        )
+    )
+
+    (:durative-action land
+        :parameters ()
+        :duration (= ?duration (land_time))
+        :condition (and 
+            (at start (is_flying))
+        )
+        :effect (and 
+            (at end (and 
+            (not (is_flying))
+            (is_not_flying)
+            ))
         )
     )
 )

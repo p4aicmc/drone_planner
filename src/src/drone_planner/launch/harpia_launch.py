@@ -34,18 +34,10 @@ def generate_launch_description():
     
     # Get the launch directory
     share_dir = get_package_share_directory('drone_planner')
-    # domain_file = share_dir + '/pddl/harpia_domain_test.pddl'
 
     ld = LaunchDescription()
 
     nodes_to_add = [
-        # IncludeLaunchDescription( # plansys
-        #     PythonLaunchDescriptionSource(os.path.join(
-        #         get_package_share_directory('plansys2_bringup'),
-        #         'launch',
-        #         'plansys2_bringup_launch_monolithic.py')),
-        #     launch_arguments={'model_file': domain_file}.items()
-        # ),
         Node(
             package='drone_planner',
             executable='lifecycle_manager.py',
@@ -107,8 +99,7 @@ def generate_launch_description():
             executable='action_planner.py',
             name='action_planner',
             output='screen',
-            # parameters=[{'pddl_domain': share_dir + '/pddl/harpia_domain.pddl'}]
-            parameters=[{"pddl_domain": share_dir+'/pddl/harpia_domain_test.pddl'}]
+            parameters=[{"pddl_domain": share_dir+'/pddl/harpia_domain.pddl'}]
         ),
         Node(
             package='drone_planner',

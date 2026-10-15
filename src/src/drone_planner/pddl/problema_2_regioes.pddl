@@ -18,11 +18,15 @@
 	( = ( distance region_2 base_1 ) 94.0538024899 )
 	( = ( distance region_2 region_1 ) 129.3246029227 )
 	( = ( distance region_2 region_2 ) 0.0000000000 )
+	( = ( take_image_time region_1 ) 10)
+	( = ( take_image_time region_2 ) 10)
 	( = ( battery_capacity ) 100.0000000000 )
-	( = ( input_capacity ) 1.0000000000 )
+	( = ( battery_recharge_rate ) 2.00 )
 	( = ( battery_amount ) 100.0000000000 )
-	( = ( input_amount ) 1.0000000000 )
 	( = ( mission_length ) 0.0000000000 )
+	( = ( cruising_speed ) 7.0 )
+	( = ( land_time ) 10 )
+	( = ( take_off_time ) 10 )
 )
 ( :goal
 	( and

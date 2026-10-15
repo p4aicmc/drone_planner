@@ -163,6 +163,7 @@ class ProblemGenerator(LifecycleNode):
 
         
         for region1 in regions_list:
+            functions.append(f"(take_image_time {region1['name']} ) 10.0")
             for region2 in regions_list:
                 if region1['name'] == region2['name']:
                     functions.append(f"(distance {region1['name']} {region1['name']}) 0.0")
@@ -185,14 +186,15 @@ class ProblemGenerator(LifecycleNode):
         goals.append("is_not_flying")
 
         functions.append(f"(battery_capacity) {self.data['hardware']['battery-capacity']}")
-        # functions.append(f"(= (discharge_rate_battery) {self.data['hardware']['discharge-rate-battery']})")
-        # functions.append(f"(discharge_rate_battery) {0.1}")
-        # functions.append(f"(velocity) {self.data['hardware']['efficient_velocity']}")
-        functions.append(f"(input_capacity) {self.data['hardware']['input-capacity']}")
+        functions.append(f"(battery_recharge_rate) {self.data['hardware']['recharge-rate-battery']}")
+        functions.append(f"(cruising_speed) {self.data['hardware']['efficient_velocity']}")
+        # functions.append(f"(input_capacity) {self.data['hardware']['input-capacity']}")
+        functions.append(f"(land_time) 10")
+        functions.append(f"(take_off_time) 10")
 
         functions.append(f"(battery_amount) {self.data['hardware']['battery-capacity']}")
         # functions.append(f"(battery_amount) 0")
-        functions.append(f"(input_amount) {self.data['hardware']['input-capacity']}")
+        # functions.append(f"(input_amount) {self.data['hardware']['input-capacity']}")
         predicates.append(f"at {inside_region}")
         predicates.append(f"been_at {inside_region}")
         predicates.append("is_not_flying")
