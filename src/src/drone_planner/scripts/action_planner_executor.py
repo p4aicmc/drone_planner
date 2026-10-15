@@ -137,7 +137,6 @@ class ActionPlannerExecutor:
         # self.get_logger().info("checking if can start action")
         # self.get_logger().info("actions before:")
         # [self.print_action(action) for action in self.current_plan]
-        self.get_logger().info(f"test 3")
         if self.current_plan is None:
             self.get_logger().error("no plan in progress 1")
             return False
@@ -147,12 +146,11 @@ class ActionPlannerExecutor:
 
         all_completed = True
         is_there_in_progress = False
-        self.get_logger().info(f"test 4")
 
         
         for action in self.current_plan:
 
-            self.get_logger().info(f"checking action {action['name']} {action['args']} ({action['state']})")
+            # self.get_logger().info(f"checking action {action['name']} {action['args']} ({action['state']})")
 
             if action['state'] == ActionState.PENDING:
                 all_completed = False
@@ -162,7 +160,7 @@ class ActionPlannerExecutor:
                     continue
 
                 if self.memory.check_conditions_action(action['name'], action['args'], ["at start", "over all"]):
-                    self.get_logger().info(f"action {action['name']} can be started")
+                    # self.get_logger().info(f"action {action['name']} can be started")
                     if not self.start_action(action):
                         self.get_logger().error(f"could not start action {action['name']}")
                         return False
@@ -180,8 +178,6 @@ class ActionPlannerExecutor:
                 # is_there_completed = True
                 pass
 
-        
-        self.get_logger().info(f"test 5")
 
         # self.get_logger().info("actions after:")
         # [self.print_action(action) for action in self.current_plan]
@@ -233,9 +229,7 @@ class ActionPlannerExecutor:
                     self.get_logger().info(f"action {action['name']} completed")    
                     self.memory.apply_effects(action['name'], action['args'], ["at end"])
                     action['state'] = ActionState.COMPLETED
-                    self.get_logger().info(f"test 1")
                     self.check_if_can_start_action()
-                    self.get_logger().info(f"test 2")
                 
                 else:
                     self.get_logger().error(f'Action finished, but failed')

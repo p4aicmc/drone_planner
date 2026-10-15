@@ -317,8 +317,13 @@ class ActionPlannerMemory:
 
     def _are_conditions_met(self, at_start_conditions):
         current_state = self.pddl.initial_values
-        return all(self._is_condition_met(condition, current_state)
-                   for condition in at_start_conditions)
+        
+        for condition in at_start_conditions:
+            if not self._is_condition_met(condition, current_state):
+                self.get_logger().error(f'Condition {condition} is not met')
+                return False
+
+        return True
 
     def _is_condition_met(self, condition, state):
         kind = condition.node_type
@@ -416,16 +421,10 @@ class ActionPlannerMemory:
             cond.substitute(substitution_map)
             for cond in conditions
         ]
-        self.get_logger().info(f"resolved_conditions: {resolved_conditions}")
+        # self.get_logger().info(f"resolved_conditions: {resolved_conditions}")
 
         # Check if resolved conditions are met
-        # all_met = self._are_conditions_met(resolved_conditions)
-        all_met = True
-        for c in resolved_conditions:
-            if not self._are_conditions_met([c]):
-                self.get_logger().info(f'not true: {c}')
-                all_met = False
-                break
+        all_met = self._are_conditions_met(resolved_conditions)
 
 
         # self.get_logger().info(f"All met: {all_met}")

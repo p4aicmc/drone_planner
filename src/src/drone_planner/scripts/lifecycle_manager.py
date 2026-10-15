@@ -263,7 +263,7 @@ nodes = [
     },
     {
         'node_name': 'take_image',
-        'depends_on': []
+        'depends_on': ['data_server']
     },
     {
         'node_name': 'recharge_battery',
