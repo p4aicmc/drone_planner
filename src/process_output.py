@@ -21,6 +21,7 @@ logs = []
 not_recognized = []
 first_time = 0
 got_first_time = False
+line_count = 0
 
 def read_configs():
     try:
@@ -65,7 +66,9 @@ def write_configs():
 
 # for line in str.split('\n'):
 def process_new_line(line):
-    global got_first_time, first_time
+    global got_first_time, first_time, line_count
+    line_count += 1
+
     if not got_first_time:
         if len(logs) > 0:
             if logs[-1]['time_in_seconds'] is not None:
@@ -219,8 +222,24 @@ def handle_log_continuation(message):
     print(str)
 
 
+last_real_constant_line = 0
 def handle_not_recognized(line):
+    global line_count, last_real_constant_line
+
     line = line.replace('\n', '')
+
+    # skip that:
+    # Not recognized:  [action_planner.py-9] /usr/local/lib/python3.12/dist-packages/unified_planning/io/pddl_writer.py:210: UserWarning: The PDDL printer cannot exactly represent the real constant '7086559830802929/17592186044416'
+    if 'action_planner.py' in line and 'UserWarning: The PDDL printer cannot exactly represent the real constant' in line:
+        last_real_constant_line = line_count
+        return
+
+    # and skipt that if its just before the above
+    # Not recognized:  [action_planner.py-9]   warn(
+    if last_real_constant_line is not None and line_count == last_real_constant_line +1:
+        if 'action_planner.py' in line and line.endswith('warn('):
+            return
+        
     not_recognized.append(line)
     print(colored('Not recognized: ', 'red')+colored(f" {line}", 'blue'))
 
