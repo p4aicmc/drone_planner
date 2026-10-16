@@ -615,26 +615,6 @@ class ActionPlanner(LifecycleNode):
         # self.get_logger().info("Current PDDL Problem:")
         # self.get_logger().info(problem_pddl)
         return True
-    
-    def start_bat_sim(self):
-        # return
-        delay_time = 10
-        runout_time = 2*(78-4-delay_time)
-
-        timer = None
-        def delay_callback():
-            nonlocal timer
-            self.destroy_timer(timer)
-
-            def sim_bat_callback():
-                battery_amount = self.memory.get_function_value("battery_amount", [])
-                battery_amount -= 100/runout_time
-                if battery_amount < 0:
-                    battery_amount = 0
-                self.memory.set_function("battery_amount", [], battery_amount)
-
-            timer = self.create_timer(1, sim_bat_callback)
-        timer = self.create_timer(delay_time, delay_callback)
 
 def main(args=None):
     """

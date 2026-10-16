@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import math
 import time
 
 import rclpy
@@ -10,13 +11,14 @@ from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 
 from geometry_msgs.msg import PoseStamped
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import BatteryState, NavSatFix
 from std_msgs.msg import String
 from mavros_msgs.msg import ExtendedState, State as MavrosState
 from mavros_msgs.srv import CommandBool, CommandTOL, SetMode
+from std_srvs.srv import Trigger
 
 from harpia_msgs.msg import DroneSetpoint
-from harpia_msgs.srv import DroneCommand, ReleaseControl, RequestControl
+from harpia_msgs.srv import DroneCommand, ReleaseControl, RequestControl, StrInOut
 
 
 class DroneControl(LifecycleNode):
@@ -46,6 +48,11 @@ class DroneControl(LifecycleNode):
         self.hold_setpoint = PoseStamped()
         self.land_command_sent = False
         self.command_group = ReentrantCallbackGroup()
+        self.battery_capacity = None
+        self.latest_battery_percentage = None
+        self.battery_update_needed = False
+        self.battery_update_pending = False
+        self.hardware_request_pending = False
 
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -61,6 +68,8 @@ class DroneControl(LifecycleNode):
         )
         self.local_pose_pub = self.create_publisher(PoseStamped, '/drone_control/local_pose', 10)
         self.global_position_pub = self.create_publisher(NavSatFix, '/drone_control/global_position', 10)
+        self.battery_pub = self.create_publisher(
+            BatteryState, '/drone_control/battery', qos_profile)
         self.state_pub = self.create_publisher(String, '/drone_control/state', 10)
 
         self.pose_sub = self.create_subscription(
@@ -87,6 +96,12 @@ class DroneControl(LifecycleNode):
             self.global_position_callback,
             qos_profile
         )
+        self.battery_sub = self.create_subscription(
+            BatteryState,
+            '/mavros/battery',
+            self.battery_callback,
+            qos_profile
+        )
         self.external_setpoint_sub = self.create_subscription(
             DroneSetpoint,
             '/drone_control/setpoint/local',
@@ -109,6 +124,10 @@ class DroneControl(LifecycleNode):
             '/mavros/cmd/land',
             callback_group=self.command_group
         )
+        self.hardware_client = self.create_client(Trigger, 'data_server/hardware')
+        self.parameter_update_client = self.create_client(
+            StrInOut, 'plansys_interface/update_parameters')
+        self.battery_sync_timer = self.create_timer(1.0, self.sync_battery_to_planner)
 
         return TransitionCallbackReturn.SUCCESS
 
@@ -162,6 +181,67 @@ class DroneControl(LifecycleNode):
 
     def global_position_callback(self, msg):
         self.global_position_pub.publish(msg)
+
+    def battery_callback(self, msg):
+        self.battery_pub.publish(msg)
+        if not msg.present or not math.isfinite(msg.percentage) or not 0.0 <= msg.percentage <= 1.0:
+            self.get_logger().warning('Ignoring invalid MAVROS battery percentage')
+            return
+        self.latest_battery_percentage = msg.percentage
+        self.battery_update_needed = True
+
+    def sync_battery_to_planner(self):
+        if self.battery_capacity is None:
+            if self.hardware_request_pending or not self.hardware_client.service_is_ready():
+                return
+            self.hardware_request_pending = True
+            future = self.hardware_client.call_async(Trigger.Request())
+            future.add_done_callback(self.hardware_response_callback)
+            return
+
+        if (not self.battery_update_needed or self.battery_update_pending
+                or not self.parameter_update_client.service_is_ready()):
+            return
+
+        amount = self.latest_battery_percentage * self.battery_capacity
+        request = StrInOut.Request()
+        request.message = json.dumps([{
+            'type': 'update_functions',
+            'values': [f'(battery_amount) {amount:.12f}'],
+        }])
+        self.battery_update_needed = False
+        self.battery_update_pending = True
+        future = self.parameter_update_client.call_async(request)
+        future.add_done_callback(self.battery_update_response_callback)
+
+    def hardware_response_callback(self, future):
+        self.hardware_request_pending = False
+        try:
+            response = future.result()
+            capacity = float(json.loads(response.message)['battery-capacity'])
+            if not math.isfinite(capacity) or capacity <= 0:
+                raise ValueError('battery-capacity must be positive and finite')
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            self.get_logger().warning(f'Invalid hardware battery capacity: {error}')
+            return
+        except Exception as error:
+            self.get_logger().warning(f'Could not read hardware battery capacity: {error}')
+            return
+
+        self.battery_capacity = capacity
+        if self.latest_battery_percentage is not None:
+            self.battery_update_needed = True
+
+    def battery_update_response_callback(self, future):
+        self.battery_update_pending = False
+        try:
+            response = future.result()
+            if response is None or not response.success:
+                self.get_logger().warning('Could not update PDDL battery_amount')
+                self.battery_update_needed = True
+        except Exception as error:
+            self.get_logger().warning(f'Could not update PDDL battery_amount: {error}')
+            self.battery_update_needed = True
 
     def external_setpoint_callback(self, msg):
         if msg.owner != self.active_lease_owner:
