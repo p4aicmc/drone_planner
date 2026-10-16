@@ -18,11 +18,19 @@ if [[ ! -f "$DOMAIN_FILE" || ! -f "$PROBLEM_FILE" ]]; then
 fi
 
 echo "Running OPTIC:"
-echo "$SCRIPT_DIR/optic-clp -b $DOMAIN_FILE $PROBLEM_FILE"
+echo "$SCRIPT_DIR/optic-clp -n1000000000 $DOMAIN_FILE $PROBLEM_FILE"
 
-if ! "$SCRIPT_DIR/optic-clp" -b "$DOMAIN_FILE" "$PROBLEM_FILE" \
+# This OPTIC build needs an explicit upper bound for fluent-based metrics.
+# Search for improvements until the time limit, then return the last complete plan.
+set +e
+timeout "${OPTIC_TIMEOUT_SEC:-10s}" "$SCRIPT_DIR/optic-clp" -n1000000000 \
+    "$DOMAIN_FILE" "$PROBLEM_FILE" \
     > "$SCRIPT_DIR/output/plan.txt" \
-    2> "$SCRIPT_DIR/output/optic_error.txt"; then
+    2> "$SCRIPT_DIR/output/optic_error.txt"
+optic_status=$?
+set -e
+
+if [[ "$optic_status" -ne 0 && "$optic_status" -ne 124 ]]; then
 
     echo "ERROR"
     echo "Error: OPTIC returned with error"
@@ -33,7 +41,17 @@ if ! "$SCRIPT_DIR/optic-clp" -b "$DOMAIN_FILE" "$PROBLEM_FILE" \
     exit 1
 fi
 
-if ! grep -q ";;;; Solution Found" "$SCRIPT_DIR/output/plan.txt"; then
+plan=$(awk '
+    /; Plan found with metric/ {candidate=""; reading=1; next}
+    reading && /^[0-9]+\.[0-9]+:[[:space:]]+\([^)]+\)[[:space:]]+\[[0-9]+\.[0-9]+\]$/ {
+        candidate = candidate $0 ORS
+        next
+    }
+    reading && candidate != "" {plan=candidate; reading=0}
+    END {printf "%s", plan}
+' "$SCRIPT_DIR/output/plan.txt")
+
+if [[ -z "$plan" ]]; then
     echo "ERROR"
     echo "Error: Solution not found in the plan file."
     echo "----- OPTIC STDERR -----"
@@ -43,4 +61,4 @@ if ! grep -q ";;;; Solution Found" "$SCRIPT_DIR/output/plan.txt"; then
     exit 1
 fi
 
-awk '/;;;; Solution Found/ {found=1; count=3; next} found && count-- <= 0' "$SCRIPT_DIR/output/plan.txt"
+printf '%s\n' "$plan"
