@@ -2,6 +2,7 @@ from unified_planning.io import PDDLReader, PDDLWriter
 from unified_planning.model.types import _UserType
 from unified_planning.shortcuts import FluentExp
 from unified_planning.model.operators import OperatorKind
+from unified_planning.model.metrics import MinimizeExpressionOnFinalState, MaximizeExpressionOnFinalState
 
 class ActionPlannerMemory:
     _instance = None
@@ -262,10 +263,40 @@ class ActionPlannerMemory:
     def clear_goals(self):
         self.pddl.clear_goals()
 
+    def set_metric(self, metric):
+        if metric is None:
+            self.pddl.clear_quality_metrics()
+            return True
+
+        if not isinstance(metric, dict):
+            self.get_logger().error("Metric must be an object with optimization and function fields.")
+            return False
+
+        optimization = metric.get("optimization")
+        function_name = metric.get("function")
+        metric_types = {
+            "minimize": MinimizeExpressionOnFinalState,
+            "maximize": MaximizeExpressionOnFinalState,
+        }
+        if (not isinstance(optimization, str) or optimization not in metric_types
+                or not isinstance(function_name, str)):
+            self.get_logger().error("Unsupported metric specification.")
+            return False
+
+        fluent = next((item for item in self.pddl.fluents if item.name == function_name), None)
+        if fluent is None or len(fluent.signature) != 0 or not (fluent.type.is_real_type() or fluent.type.is_int_type()):
+            self.get_logger().error(f"Metric function '{function_name}' must be a numeric function without arguments.")
+            return False
+
+        self.pddl.clear_quality_metrics()
+        self.pddl.add_quality_metric(metric_types[optimization](fluent()))
+        return True
+
     def clear_memory(self):
         self.pddl._objects.clear()
         self.pddl.initial_values.clear()
         self.pddl.clear_goals()
+        self.pddl.clear_quality_metrics()
 
     def get_pddl(self):
         writer = PDDLWriter(self.pddl)
