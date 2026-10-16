@@ -496,6 +496,7 @@ class ActionPlanner(LifecycleNode):
                 'update_functions': self.update_functions,
                 'remove_functions': self.remove_functions,
                 'set_goals': self.set_goals,
+                'set_metric': self.set_metric,
                 'clear_goal': self.clear_goal,
                 'clear_knowledge': self.clear_knowledge,
                 'log_pddl': self.log_pddl,
@@ -593,6 +594,9 @@ class ActionPlanner(LifecycleNode):
             if not self.memory.add_goal(goal_name, instance_names):
                 return False
         return True
+
+    def set_metric(self, metric):
+        return self.memory.set_metric(metric)
         
     def clear_goal(self, nothing):
         self.memory.clear_goals()

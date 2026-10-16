@@ -49,7 +49,7 @@
             (at end (been_at ?to_region))
             (at end (at ?to_region))
             ; (at end (decrease (battery_amount) 1))
-            (at end(increase (mission_length) (/ (distance ?from_region ?to_region) 2)))
+            (at end (increase (mission_length) (distance ?from_region ?to_region)))
         )
     )
     
@@ -63,11 +63,10 @@
             (over all(at ?region))
             (over all(picture_goal ?region))
             (over all (is_flying))
-            (at start (> (battery_amount) 50))
+            (at start (> (battery_amount) (* 0.4 (battery_capacity))))
        )
         :effect(and
             (at end(taken_image ?region))
-            (at end(increase (mission_length) 1000))
             ; (at end(decrease (battery_amount) 10))
         )
     )

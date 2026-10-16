@@ -205,7 +205,8 @@ class ProblemGenerator(LifecycleNode):
             "instances": [ f'{name} {key}' for key in instances.keys() for name in instances[key] ],
             "predicates": predicates,
             "functions": functions,
-            "goals": goals
+            "goals": goals,
+            "metric": {"optimization": "minimize", "function": "mission_length"},
         }
     
     def get_current_position(self, strm=""):
@@ -325,6 +326,12 @@ class ProblemGenerator(LifecycleNode):
             formatted_updates.append({
                 'type': f'set_goals',
                 'values': new_problem['goals']
+            })
+
+        if new_problem.get('metric') != self.last_problem.get('metric'):
+            formatted_updates.append({
+                'type': 'set_metric',
+                'values': new_problem.get('metric')
             })
 
         # saves the problem

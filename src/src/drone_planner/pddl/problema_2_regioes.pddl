@@ -35,4 +35,5 @@
 		( at base_1 )
 		( is_not_flying )
 	))
+(:metric minimize (mission_length))
 )

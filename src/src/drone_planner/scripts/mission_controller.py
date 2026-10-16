@@ -131,6 +131,10 @@ class MissionController(LifecycleNode):
                 'type': 'set_goals',
                 'values': problem['goals']
             },
+            {
+                'type': 'set_metric',
+                'values': problem.get('metric')
+            },
         ]
 
         def service_callback(future):
