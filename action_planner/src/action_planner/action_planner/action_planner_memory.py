@@ -156,13 +156,18 @@ class ActionPlannerMemory:
         # Cria a expressão do predicado
         predicate_expression = FluentExp(fluent, objects)
 
-        # Remove o predicado do estado inicial (se existir)
-        if predicate_expression in self.pddl.initial_values:
-            del self.pddl.initial_values[predicate_expression]
-            return True
-        else:
-            self.get_logger().warning(f"Predicate '{predicate_expression}' not found in initial state.")
+        # `initial_value` answers from the explicit assignments plus the fluent
+        # default (False for PDDL predicates) without grounding the whole
+        # problem, so "not found" really means "not currently true".
+        current_value = self.pddl.initial_value(predicate_expression)
+        if current_value is None or not current_value.is_true():
+            self.get_logger().warning(f"Predicate '{predicate_expression}' is not true in the initial state.")
             return False
+
+        # Setting it to False is the same as removing it: the predicate's
+        # default is False and the writer only emits true atoms.
+        self.pddl.set_initial_value(predicate_expression, False)
+        return True
 
     def set_function(self, function_name, instance_names, value):
         """Define o valor inicial de uma função numérica (fluent) no estado inicial.
@@ -264,32 +269,50 @@ class ActionPlannerMemory:
 
     def clear_memory(self):
         self.pddl._objects.clear()
-        self.pddl.initial_values.clear()
+        self.pddl.explicit_initial_values.clear()
         self.pddl.clear_goals()
 
     def get_pddl(self):
         writer = PDDLWriter(self.pddl)
         return writer.get_domain(), writer.get_problem()
 
-    def _evaluate_expression(self, expr, state):
-        """Recursively evaluate expressions, including arithmetic operations."""
-        # self.get_logger().info(f"Evaluating: {expr}")
+    def _lookup_value(self, fluent_exp, overrides=None):
+        """Return the current value FNode of a grounded fluent expression, or None if unset.
+
+        Reads the explicit initial values plus the fluent default through
+        ``Problem.initial_value``; unlike the ``initial_values`` property this
+        does not ground every fluent over every object on each call.
+        ``overrides`` (FNode -> python value) takes precedence and is used by
+        ``apply_effects`` for values computed but not yet committed.
+        """
+        if overrides is not None and fluent_exp in overrides:
+            return overrides[fluent_exp]
+        value = self.pddl.initial_value(fluent_exp)
+        if value is None:
+            return None
+        if not value.is_constant():
+            raise ValueError(f"Value of '{fluent_exp}' is not a constant: {value}")
+        return value.constant_value()
+
+    def _evaluate_expression(self, expr, state=None):
+        """Recursively evaluate a numeric expression against the current state.
+
+        ``state`` is an optional dict of pending overrides (see ``_lookup_value``).
+        Raises ValueError when a referenced fluent has no value, instead of
+        silently producing garbage.
+        """
         if expr.is_constant():
-            # self.get_logger().info(expr.constant_value(), "is a constant")
-            return expr.constant_value()  # Direct value for constants like numbers
+            value = expr.constant_value()
+            return float(value) if not isinstance(value, bool) else value
 
         elif expr.is_fluent_exp():
-            value = str(state.get(expr, None))
-            if '/' in str(value):
-                value = value.split('/')
-                value = float(value[0]) / float(value[1])
-            else:
-                value = float(value)
-            # self.get_logger().info(value, "fluent")
-            return value  # Lookup fluent value in the state
+            value = self._lookup_value(expr, state)
+            if value is None:
+                raise ValueError(f"Fluent '{expr}' has no value in the current state")
+            return float(value) if not isinstance(value, bool) else value
 
         elif expr.node_type in {
-            OperatorKind.PLUS, OperatorKind.MINUS, 
+            OperatorKind.PLUS, OperatorKind.MINUS,
             OperatorKind.TIMES, OperatorKind.DIV
         }:
             # self.get_logger().info("is expression")
@@ -316,17 +339,15 @@ class ActionPlannerMemory:
 
 
     def _are_conditions_met(self, at_start_conditions):
-        current_state = self.pddl.initial_values
-
         for condition in at_start_conditions:
             if hasattr(condition, 'node_type') and condition.node_type.name in {
                 'GT', 'GE', 'LT', 'LE', 'EQUALS'
             }:
                 left_expr, right_expr = condition.args
                 # self.get_logger().info("evaluating left side:")
-                left_val = self._evaluate_expression(left_expr, current_state)
+                left_val = self._evaluate_expression(left_expr)
                 # self.get_logger().info("\n\nevaluating right side:")
-                right_val = self._evaluate_expression(right_expr, current_state)
+                right_val = self._evaluate_expression(right_expr)
 
                 # Apply the operator
                 if condition.node_type.name == 'GT':
@@ -344,11 +365,16 @@ class ActionPlannerMemory:
 
                 if not satisfied:
                     return False
-            else:
-                value = current_state.get(condition, False)
-                value = str(value)=="true" # convert to boolean
-                if not value:
+            elif condition.is_fluent_exp():
+                # Unset boolean fluents fall back to the PDDL default (False)
+                if self._lookup_value(condition) is not True:
                     return False
+            elif condition.is_not() and condition.arg(0).is_fluent_exp():
+                if self._lookup_value(condition.arg(0)) is True:
+                    return False
+            else:
+                self.get_logger().error(f"Unsupported condition '{condition}', treating as not met")
+                return False
 
         return True
 
@@ -444,30 +470,44 @@ class ActionPlannerMemory:
         for param, obj_name in zip(action.parameters, parameters):
             substitution_map[param] = self.pddl.object(obj_name)
 
-        # Apply effects
+        # Two phases: evaluate every requested effect first, then commit.
+        # If any value cannot be computed (e.g. an unset numeric fluent) the
+        # ValueError propagates and the memory is left exactly as it was.
+        # `pending` holds values computed by earlier timings so that "end"
+        # effects see the result of "start" effects, while every effect within
+        # one timing reads the pre-effect values of that timing.
+        pending = {}
         for timing, effects in action.effects.items():
             timing = str(timing)
-            if str(timing) not in timings:
+            if timing not in timings:
                 continue
-            # self.get_logger().info(f"\ncomp '{timing}'")
-            # Snapshot the state so every effect at this timing reads the pre-effect values
-            state = dict(self.pddl.initial_values)
+            timing_updates = {}
             for effect in effects:
                 # Substitute parameters in the effect's fluent and value
                 substituted_fluent = effect.fluent.substitute(substitution_map)
                 substituted_value = effect.value.substitute(substitution_map)
 
-                # Evaluate the value (if it's a complex expression)
-                evaluated_value = self._evaluate_expression(substituted_value, state)
+                try:
+                    # Evaluate the value (if it's a complex expression)
+                    evaluated_value = self._evaluate_expression(substituted_value, pending)
 
-                # increase/decrease carry a delta, not the resulting value
-                if effect.is_increase():
-                    evaluated_value = self._evaluate_expression(substituted_fluent, state) + evaluated_value
-                elif effect.is_decrease():
-                    evaluated_value = self._evaluate_expression(substituted_fluent, state) - evaluated_value
+                    # increase/decrease carry a delta, not the resulting value
+                    if effect.is_increase():
+                        evaluated_value = self._evaluate_expression(substituted_fluent, pending) + evaluated_value
+                    elif effect.is_decrease():
+                        evaluated_value = self._evaluate_expression(substituted_fluent, pending) - evaluated_value
+                except ValueError as error:
+                    raise ValueError(
+                        f"Cannot apply '{timing}' effect '{substituted_fluent} := {substituted_value}' "
+                        f"of action '{action_name}' {list(parameters)}: {error}"
+                    ) from error
 
-                # Update the state
-                self.pddl.set_initial_value(substituted_fluent, evaluated_value)
+                timing_updates[substituted_fluent] = evaluated_value
+            pending.update(timing_updates)
+
+        # Commit
+        for fluent_exp, value in pending.items():
+            self.pddl.set_initial_value(fluent_exp, value)
 
 
     def get_function_value(self, function_name, instance_names):
@@ -521,9 +561,8 @@ class ActionPlannerMemory:
         # Ex: (custo_transporte caminhao1)
         function_expression = FluentExp(fluent, objects)
 
-        # 6. Obter o valor do estado inicial.
-        # self.pddl.initial_values é um dicionário que mapeia expressões a valores.
-        value_node = self.pddl.initial_values.get(function_expression)
+        # 6. Obter o valor do estado inicial (sem instanciar todos os fluents).
+        value_node = self.pddl.initial_value(function_expression)
 
         if value_node is None:
             self.get_logger().info(f"Function '{function_expression}' is not explicitly set in the initial state.")
