@@ -160,7 +160,16 @@ class ActionPlannerExecutor:
                     # self.get_logger().info("plan is cancelling, skipping action start")
                     continue
 
-                if self.memory.check_conditions_action(action['name'], action['args'], ["at start", "over all"]):
+                try:
+                    conditions_met = self.memory.check_conditions_action(action['name'], action['args'], ["at start", "over all"])
+                except Exception as error:
+                    # e.g. unknown object or unset numeric fluent: fail the plan
+                    # explicitly instead of letting the exception escape the callback
+                    self.get_logger().error(f"could not evaluate conditions of action {action['name']} {action['args']}: {error}")
+                    self.handle_plan_failure()
+                    return False
+
+                if conditions_met:
                     # self.get_logger().info(f"action {action['name']} can be started")
                     if not self.start_action(action):
                         self.get_logger().error(f"could not start action {action['name']}")
@@ -207,9 +216,15 @@ class ActionPlannerExecutor:
 
         return started_any_action
             
-    def start_action(self, action):        
+    def start_action(self, action):
+        try:
+            # apply_effects is atomic: on error the memory is unchanged
+            self.memory.apply_effects(action['name'], action['args'], ["at start"])
+        except Exception as error:
+            self.get_logger().error(f"could not apply start effects of action {action['name']} {action['args']}: {error}")
+            self.handle_plan_failure()
+            return False
         action['state'] = ActionState.IN_PROGRESS
-        self.memory.apply_effects(action['name'], action['args'], ["at start"])
         # self.get_logger().info(f"action {action['name']} started")
 
         # call action 
@@ -226,8 +241,15 @@ class ActionPlannerExecutor:
                 # Action completed (was not canceled)
 
                 if result.success:
-                    self.get_logger().info(f"action {action['name']} completed")    
-                    self.memory.apply_effects(action['name'], action['args'], ["at end"])
+                    self.get_logger().info(f"action {action['name']} completed")
+                    try:
+                        self.memory.apply_effects(action['name'], action['args'], ["at end"])
+                    except Exception as error:
+                        # an exception here would otherwise vanish inside the future
+                        # callback and leave the plan running forever
+                        self.get_logger().error(f"could not apply end effects of action {action['name']} {action['args']}: {error}")
+                        self.handle_plan_failure()
+                        return
                     action['state'] = ActionState.COMPLETED
                     self.check_if_can_start_action()
                 
@@ -285,9 +307,16 @@ class ActionPlannerExecutor:
         
         for action in self.current_plan:
             if action['state'] == ActionState.IN_PROGRESS:
-                if not self.memory.check_conditions_action(action['name'], action['args'], "over all"):
+                try:
+                    over_all_met = self.memory.check_conditions_action(action['name'], action['args'], "over all")
+                except Exception as error:
+                    self.get_logger().error(f"could not evaluate over all conditions of action {action['name']} {action['args']}: {error}")
+                    self.handle_plan_failure()
+                    return
+                if not over_all_met:
                     self.get_logger().error(f"action {action['name']} do not meet over all conditions")
                     self.handle_plan_failure()
+                    return
 
     def handle_plan_failure(self):
         self.get_logger().error("Plan failed")
