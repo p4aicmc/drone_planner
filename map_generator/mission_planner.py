@@ -3,6 +3,7 @@ import os
 import sys
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QSettings
+from shapely.geometry import Polygon
 
 from kml_parser import parse_kml_file
 
